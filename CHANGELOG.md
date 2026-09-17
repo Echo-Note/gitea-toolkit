@@ -2,6 +2,35 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.1.4] - 2026-09-17
+
+### 新增
+
+- **CI 自动化**（`.github/workflows/ci.yml`）：
+  - push 到 `main` 与 PR 时执行：类型检查、ESLint、AI 工具清单与代码定义的一致性校验、
+    codicon 图标名存在性校验
+  - 校验通过后构建并打包 `.vsix`，作为 artifact 上传（保留 30 天）；打包失败时额外上传 `dist/` 便于排查
+  - **依据打包版本自动打 tag 并发布 Release**：若 `package.json` 的版本尚无对应 tag，
+    则自动创建 `v{版本}`（`--target` 精确指向本次构建的提交）并发布 Release、附上 `.vsix`；
+    版本号未变更则跳过，因此日常推送不会产生 Release
+  - **构建失败自动创建 Issue**：仅针对 `main`（PR 失败不建，避免刷屏），内容包含失败步骤、
+    提交、运行链接与本地复现命令；同一个问题追加评论而非重复建 issue；
+    按标签幂等，CI 恢复后自动关闭
+  - 新增 `npm run ci` 一条命令跑完全部校验；`npm run check:workflows` 静态校验 workflow
+    本身（YAML 结构、内嵌 shell 与 github-script 语法、permissions 与 API 调用的匹配）
+- `scripts/check-workflows.mjs`：workflow 静态校验。GitHub Actions 的配置错误往往在推送后
+  才暴露（缩进错了整个 workflow 静默不执行），该脚本在本地与 CI 提前拦住。
+
+### 变更
+
+- **`gitea.serverUrl` 默认值改为留空**：不再内置任何具体实例地址，首次执行
+  「设置访问令牌」时会引导填写。此前内置默认值会让其他实例的用户直接连错。
+- 文档、示例与预览脚本中的地址统一泛化为 `gitea.example.com`。
+
+### 修复
+
+- `.vscodeignore` 排除 `.github/**`，避免 workflow 文件被打进 VSIX。
+
 ## [0.1.3] - 2026-09-17
 
 ### 新增

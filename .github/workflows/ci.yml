@@ -103,9 +103,94 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  release:
+    name: 打 tag 并发布
+    needs: package
+    # 只在 main 上发布，PR 不发布。
+    #
+    # 「是否发版」由「版本号是否变过」决定：若 package.json 的版本已有对应 tag/Release 就跳过。
+    # 因此日常推送不会产生 Release，只有主动升级版本号（npm run version:patch 等）才会发版。
+    # tag 由 gh release create 依据 package.json 的版本自动创建，无需人工 git tag。
+    #
+    # 注意：这里创建 tag 会触发 push(tag) 事件，但本 workflow 只监听 push(branches: main)，
+    # 因此不会自我触发，无需 [skip ci]。
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tagExists: ${{ steps.resolve.outputs.tag_exists }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 下载已构建的 VSIX
+        # 复用 package job 的产物，避免重复构建
+        uses: actions/download-artifact@v7
+        with:
+          name: gitea-toolkit-vsix
+
+      - name: 解析版本号并判断是否已发布
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          if gh release view "v${VERSION}" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=跳过发布::v${VERSION} 的 Release 已存在。产物仍作为 artifact 上传；若要发版请先升级版本号。"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+            echo "v${VERSION} 尚未发布，准备创建 tag 与 Release"
+          fi
+
+      - name: 创建 Release（同时依据打包版本打 tag）
+        id: publish
+        if: steps.resolve.outputs.tag_exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.resolve.outputs.version }}"
+          test -f "gitea-toolkit-${VERSION}.vsix" || {
+            echo "::error::未找到产物 gitea-toolkit-${VERSION}.vsix"
+            ls -l ./*.vsix || true
+            exit 1
+          }
+          # --target 让 tag 精确指向本次实际构建的提交，避免落到别的提交上
+          gh release create "v${VERSION}" "gitea-toolkit-${VERSION}.vsix" \
+            --target "${GITHUB_SHA}" \
+            --title "v${VERSION}" \
+            --generate-notes
+          echo "::notice title=已发布::tag v${VERSION} → ${GITHUB_SHA}"
+
+      - name: 写入摘要
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.resolve.outputs.version }}"
+          TAG_EXISTS="${{ steps.resolve.outputs.tag_exists }}"
+          {
+            echo "## 发版结果"
+            echo
+            if [ "${TAG_EXISTS}" = "false" ]; then
+              echo "✅ 已创建 tag \`v${VERSION}\` 并发布 Release（附件 \`gitea-toolkit-${VERSION}.vsix\`）"
+              echo
+              echo "Release：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
+            else
+              echo "⏭️ 跳过：\`v${VERSION}\` 已存在（版本号未变更）"
+              echo
+              echo "本次产物已作为 artifact \`gitea-toolkit-vsix\` 上传，可在运行页面下载。"
+              echo "需要发版请先 \`npm run version:patch\`（或 minor/major）提交后再推送。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   report-failure:
     name: 构建失败 → 创建 Issue
-    needs: [verify, package]
+    needs: [verify, package, release]
     # 只在 main 分支失败时建 issue：
     #   - PR 失败不建，否则每个 bugfix 分支都会刷 issue
     #   - main 失败说明主干已损坏，必须有人知道
@@ -222,7 +307,7 @@ jobs:
 
   close-failure-issue:
     name: 构建恢复 → 关闭 Issue
-    needs: [verify, package]
+    needs: [verify, package, release]
     # 形成闭环：修好之后不用人工去关那个失败 issue
     if: ${{ success() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest

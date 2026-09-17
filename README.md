@@ -261,6 +261,35 @@ SKIP_VERSION_BUMP=1 npm run package             # 本次打包不递增
 
 打包脚本本身不调用 esbuild —— 由 vsce 触发的 `vscode:prepublish` 统一负责，避免重复构建。
 
+### CI 与发版流程
+
+`.github/workflows/ci.yml` 是唯一的流水线（分为 verify / package / release / 失败处理四组 job）：
+
+| 时机 | 行为 |
+| --- | --- |
+| push 到 `main`、面向 `main` 的 PR | 校验（`tsc` / ESLint / 工具清单 / 图标名）→ 构建打包 → 上传 `.vsix` artifact |
+| `package.json` 的版本还没有对应 tag | 自动创建 `v{版本}`（指向本次构建的提交）并发布 Release，附件为 `.vsix` |
+| 版本号未变更 | 只产出 artifact，**不发布** |
+| `main` 上任何 job 失败 | 自动创建 issue（含失败步骤、提交、运行链接、本地复现命令）；同一问题追加评论而非重复建 |
+| `main` 恢复通过 | 自动关闭遗留的失败 issue |
+
+**所以「发版」就等于「升级版本号并推送」**，tag 与 Release 都由流水线依据 `package.json`
+的版本创建，不需要手工 `git tag`：
+
+```bash
+npm run version:patch          # 0.1.4 → 0.1.5，并在 CHANGELOG 顶部插入新区块
+# 填写 CHANGELOG 后：
+git add -A && git commit -m "chore: 发布 v0.1.5" && git push
+```
+
+> 未采用「每次 push 都自动发版」是有意的：那会让版本号随每次提交增长，Release 也变成噪音。
+> 若确实需要，去掉 `release` job 的 `if` 条件并补一步 `npm run version:patch` + 提交即可，
+> 提交信息需带 `[skip ci]` 以免流水线自我触发。
+
+workflow 本身也有校验：`npm run check:workflows` 会检查 YAML 结构、内嵌 shell 与
+github-script 的语法，以及 `permissions` 是否覆盖了代码里调用的 REST API
+（显式声明 `permissions` 后，未列出的 scope 会被置为 `none`，漏掉就是 403）。
+
 按 `F5` 启动「运行扩展」调试配置即可加载扩展。
 
 > **关于 `repository` 字段**：`package.json` **刻意不声明** `repository`，避免把发布信息
