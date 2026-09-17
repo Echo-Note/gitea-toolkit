@@ -2,13 +2,14 @@
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
   "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "echo-note",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/Echo-Note/gitea-toolkit.git"
   },
+  "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.101.0"
   },
@@ -1556,7 +1557,7 @@
     "version:patch": "node scripts/bump-version.mjs --part=patch",
     "version:minor": "node scripts/bump-version.mjs --part=minor",
     "version:major": "node scripts/bump-version.mjs --part=major",
-    "package": "npm run version:patch && npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "package": "npm run version:patch && npx --yes @vscode/vsce package --no-dependencies",
     "vscode:prepublish": "node esbuild.js --production",
     "preview:icon": "node scripts/preview-icon.mjs",
     "preview:tree": "node scripts/preview-tree.mjs",

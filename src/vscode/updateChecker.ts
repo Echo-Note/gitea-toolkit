@@ -17,6 +17,20 @@ import { evaluateUpdate } from '../core/selfUpdate';
 import { buildUserAgent, readSettings } from './config';
 import { logInfo, logWarn } from './logger';
 
+/**
+ * 分发渠道。**上架 Marketplace 前必须改这里。**
+ *
+ * - `'github'`：仅经 GitHub Releases 分发。编辑器不会自动更新，故启用内置更新检查。
+ * - `'marketplace'`：已上架 Marketplace，**编辑器会自动更新**。
+ *   此时关闭自动检查 —— 否则若 GitHub Releases 领先于 Marketplace（CI 每次版本递增都发 Release，
+ *   而 Marketplace 发布通常是手动的），用户会被反复提示「去 GitHub 下载 .vsix」，
+ *   绕过 Marketplace，两条通道互相打架。
+ *
+ * 之所以用编译期常量而不是运行时探测：VS Code 没有公开 API 能判断扩展的安装来源，
+ * 三种安装方式（Marketplace / VSIX / 开发）落在同一个 `extensions/` 目录下，无法区分。
+ */
+export const UPDATE_CHANNEL: 'github' | 'marketplace' = 'github';
+
 /** globalState 键：上次成功检查的时间戳。 */
 const LAST_CHECK_KEY = 'gitea.update.lastCheckAt';
 
@@ -135,6 +149,10 @@ export async function checkForUpdates(
  * @param context 扩展上下文
  */
 export async function autoCheckForUpdates(context: vscode.ExtensionContext): Promise<void> {
+  if (UPDATE_CHANNEL !== 'github') {
+    // 已上架 Marketplace：交给编辑器的自动更新，内置检查只会造成重复或矛盾提示
+    return;
+  }
   if (!readSettings().checkUpdates) {
     return;
   }

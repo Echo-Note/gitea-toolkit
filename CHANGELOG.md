@@ -2,6 +2,36 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.2.1] - 2026-09-17
+
+### 新增
+
+- **补齐上架扩展市场所需的清单**：新增 `icon`（`media/icon.png`，256×256 PNG）。
+  此前 `package.json` 没有 `icon` 字段，而 `vsce` **拒收 SVG 图标**、要求 ≥128×128 的 PNG，
+  相当于上架硬阻断。活动栏那个 24×24 单色 SVG 不能直接复用（它靠 `currentColor` 跟随主题，
+  不是给市场展示用的），故单独绘制了带底色的版本；`media/icon.svg` 保留为可编辑源文件。
+
+### 变更
+
+- 新增 `UPDATE_CHANNEL` 常量（`src/vscode/updateChecker.ts`），用来隔离两条更新通道。
+  上架市场后把它改成 `'marketplace'` 即可关闭内置的自动检查 —— 否则编辑器已从市场自动更新，
+  扩展还会另提示「去 GitHub 下载 .vsix」，两条通道互相打架。
+  用编译期常量而非运行时探测，是因为 VS Code **没有公开 API 能判断扩展的安装来源**
+  （Marketplace / 手动装 VSIX / 开发模式都落在同一个 `extensions/` 目录下）。
+  手动检查不受影响，但会注明「比对的是 GitHub Releases 的版本」。
+- `npm run package` 移除 `--allow-missing-repository`（`repository` 已声明）。
+
+### 文档
+
+- 新增「发布到扩展市场」一节。**关键结论**：CodeBuddy（CN 与国际版）的扩展源是
+  **Open VSX** 而非 MS Marketplace（`product.json` 的 `extensionsGallery.serviceUrl`
+  指向 `open-vsx.org`），只发 MS Marketplace 的话 CodeBuddy 用户看不到这个扩展。
+  文中给出两个市场的发布命令、三个坑（publisher 不可改、`vsce publish` 自建 tag 会与 CI 冲突、
+  Azure DevOps PAT 于 2026-12-01 退役）。
+- 更正 `repository` 字段的说明：0.1.4 曾刻意移除它并改用 `--allow-missing-repository`，
+  0.2.0 又加了回来，两处文档此前互相矛盾，现已写明理由与取舍。
+
+
 ## [0.2.0] - 2026-09-17
 
 ### 新增

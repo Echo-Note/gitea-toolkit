@@ -371,12 +371,75 @@ github-script 的语法，以及 `permissions` 是否覆盖了代码里调用的
 
 按 `F5` 启动「运行扩展」调试配置即可加载扩展。
 
-> **关于 `repository` 字段**：`package.json` **刻意不声明** `repository`，避免把发布信息
-> 绑定到某个具体实例或私有仓库。发布到 Marketplace 时由 CI 注入，本地打包用
-> `--allow-missing-repository`（已写进 `npm run package`）。扩展 ID 与版本号一律从
+> **关于 `repository` 字段**：0.2.0 之前 `package.json` **刻意不声明**它，理由是「避免把发布信息
+> 绑定到某个私有仓库」，代价是打包必须加 `--allow-missing-repository`。
+> 0.2.0 起改为**显式声明**（指向公开仓库），原因有二：更新检查需要从它推导 GitHub 坐标；
+> 上架扩展市场时 `vsce` / `ovsx` 也会用它来修正 README 中的相对链接。
+> 该参数已从 `npm run package` 移除。扩展 ID 与版本号仍一律从
 > `ExtensionContext` 读取（`context.extension.id` / `context.extension.packageJSON`），
 > 源码中不存在硬编码的扩展标识。
 调试详情面板时，命令面板执行 `Developer: Open Webview Developer Tools` 可查看面板日志。
+
+### 发布到扩展市场
+
+**先确定发到哪个市场**，这直接决定你的用户能不能装到：
+
+| 市场 | 谁在用 | 发布工具 |
+| --- | --- | --- |
+| **Open VSX** | **CodeBuddy（CN 与国际版）**、VSCodium、Gitpod、code-server 等 | `ovsx` |
+| VS Code Marketplace | 微软官方 VS Code | `vsce` |
+
+> 实测确认：CodeBuddy 的 `product.json` 中 `extensionsGallery.serviceUrl` 指向
+> `https://open-vsx.org/vscode/gallery`。**只发 MS Marketplace，CodeBuddy 用户看不到这个扩展。**
+> 本扩展的主要受众正是 CodeBuddy，所以 Open VSX 才是主通道。
+
+两个市场的清单要求当前都已满足：`publisher`、`icon`（256×256 PNG）、`repository`、
+`license`、`README.md`、`CHANGELOG.md`，`keywords` 6 个（上限 30），文档中无图片引用。
+
+#### 发到 Open VSX（CodeBuddy 用户走这条）
+
+```bash
+# 1. 注册 Eclipse 账号 https://accounts.eclipse.org/user/register
+#    其中的 GitHub Username 必须与登录 open-vsx.org 用的 GitHub 账号一致
+# 2. 登录 https://open-vsx.org，在 Profile 页签署 Publisher Agreement
+# 3. 生成访问令牌 https://open-vsx.org/user-settings/tokens（只显示一次，注意保存）
+npx ovsx create-namespace echo-note -p <TOKEN>   # 命名空间必须等于 package.json 的 publisher
+npx ovsx publish gitea-toolkit-<版本>.vsix -p <TOKEN>
+```
+
+#### 发到 VS Code Marketplace
+
+```bash
+# 1. https://marketplace.visualstudio.com/manage 创建 publisher，ID 必须为 echo-note
+# 2. Azure DevOps 建 PAT：Organization 选 All accessible organizations，
+#    作用域 Custom defined → Marketplace → Manage
+npx vsce login echo-note                                # 粘贴 PAT
+npx vsce publish --packagePath gitea-toolkit-<版本>.vsix
+```
+
+#### 三个坑
+
+1. **`publisher` 上架后不可更改**。它同时是 Marketplace 的 publisher ID 和 Open VSX 的命名空间；
+   一旦改动，扩展 ID 就从 `<publisher>.gitea-toolkit` 变成了别的，**已装用户不会被自动迁移**，
+   必须卸载重装。所以先确认能拿到 `echo-note` 这个 ID / 命名空间，再动手。
+
+2. **不要在本地直接跑不带 `--packagePath` 的 `vsce publish`**。它会经由 `npm version`
+   自己创建 commit 与 tag，和本项目的 CI 发版流程（`gh release create` 建 tag）打架。
+   一律用 `--packagePath` 复用 CI 已构建的 vsix，做到「构建一次、多通道发布」，版本号严格一致。
+
+3. **Azure DevOps 全局 PAT 将于 2026-12-01 退役**（距今约两个半月）。若要把 Marketplace
+   发布也接进 CI，应直接用 Entra ID 工作负载身份联合：`vsce publish --azure-credential`
+   （需 vsce ≥ 2.26.1）。Open VSX 的 token 没有这个问题。
+
+#### 上架后必须改一处代码
+
+把 `src/vscode/updateChecker.ts` 里的 `UPDATE_CHANNEL` 改成 `'marketplace'`。
+
+否则会同时存在两条更新通道：编辑器已经从市场自动更新，扩展又提示「去 GitHub 下载 .vsix」。
+当 CI 每次版本递增都发 Release、而市场是手动发布时，GitHub 会持续领先，用户会被反复引导绕开市场。
+
+> 继续发 GitHub Releases 仍有价值（离线安装、`SHA256SUMS` 校验、变更记录），
+> 只要保证各通道版本号一致即可。
 
 ### 目录结构
 

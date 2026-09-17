@@ -12,6 +12,9 @@ tsconfig.json
 esbuild.js
 **/*.map
 
+# 市场图标的可编辑源文件：运行时只用到 media/icon.png，源文件留在仓库里便于改版
+media/icon.svg
+
 # 打包产物必须保留
 !dist/**
 !dist/mcpServer.js
@@ -20,4 +23,10 @@ esbuild.js
 !CHANGELOG.md
 !LICENSE
 !package.json
-!media/**
+
+# 媒体资源逐个白名单，而不是整目录放行：
+#   gitea.svg —— 活动栏图标（必须打包，VS Code 主题图标只能是 SVG）
+#   icon.png  —— 市场展示图标（必须打包，且市场禁 SVG）
+# media/icon.svg 是可编辑源文件，运行时用不到，故不列入
+!media/gitea.svg
+!media/icon.png

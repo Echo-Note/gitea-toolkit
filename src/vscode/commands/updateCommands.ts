@@ -5,7 +5,7 @@
  * 这里检查的是**扩展自身**是否有新版本可用。
  */
 import * as vscode from 'vscode';
-import { checkForUpdates, showUpdatePrompt } from '../updateChecker';
+import { UPDATE_CHANNEL, checkForUpdates, showUpdatePrompt } from '../updateChecker';
 import { logError } from '../logger';
 import type { CommandDeps, CommandMap } from './types';
 
@@ -37,7 +37,7 @@ export function createUpdateCommands(deps: CommandDeps): CommandMap {
           return;
         }
         const action = await vscode.window.showInformationMessage(
-          `Gitea Toolkit 已是最新版本（${info.current}）。`,
+          `Gitea Toolkit 已是最新版本（${info.current}）。${channelNote()}`,
           '打开 Releases 页面',
         );
         if (action === '打开 Releases 页面') {
@@ -49,4 +49,17 @@ export function createUpdateCommands(deps: CommandDeps): CommandMap {
       }
     },
   };
+}
+
+/**
+ * 已上架 Marketplace 时的补充说明。
+ *
+ * 上架后编辑器会自动更新，而手动检查比对的是 GitHub Releases，
+ * 两者可能不同步（例如 GitHub 已发 Release 但尚未上架），需要向用户讲清楚。
+ * @returns 说明文本（未上架时为空串）
+ */
+function channelNote(): string {
+  return UPDATE_CHANNEL === 'marketplace'
+    ? '\n本扩展已上架 Marketplace，编辑器会自动更新；此处比对的是 GitHub Releases 的版本。'
+    : '';
 }
