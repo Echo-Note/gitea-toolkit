@@ -1,0 +1,23 @@
+# 源码、构建脚本与开发配置不进包
+src/**
+scripts/**
+out/**
+node_modules/**
+.vscode/**
+.github/**
+.codebuddy/**
+.gitignore
+eslint.config.mjs
+tsconfig.json
+esbuild.js
+**/*.map
+
+# 打包产物必须保留
+!dist/**
+!dist/mcpServer.js
+!dist/extension.js
+!README.md
+!CHANGELOG.md
+!LICENSE
+!package.json
+!media/**

@@ -1,0 +1,34 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "build",
+      "group": "build",
+      "problemMatcher": ["$esbuild"],
+      "label": "npm: build"
+    },
+    {
+      "type": "npm",
+      "script": "watch",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": ["$esbuild-watch"],
+      "label": "npm: watch"
+    },
+    {
+      "type": "npm",
+      "script": "compile",
+      "group": "build",
+      "problemMatcher": ["$tsc"],
+      "label": "npm: compile"
+    },
+    {
+      "type": "npm",
+      "script": "check:tools",
+      "group": "test",
+      "problemMatcher": [],
+      "label": "npm: check:tools"
+    }
+  ]
+}

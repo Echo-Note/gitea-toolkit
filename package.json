@@ -1,0 +1,1564 @@
+{
+  "name": "gitea-toolkit",
+  "displayName": "Gitea Toolkit",
+  "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
+  "version": "0.1.3",
+  "publisher": "echo-note",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers"
+  ],
+  "keywords": [
+    "gitea",
+    "gogs",
+    "mcp",
+    "codebuddy",
+    "ai",
+    "git"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "Gitea Toolkit",
+      "properties": {
+        "gitea.serverUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Gitea 实例地址，例如 https://gitea.example.com"
+        },
+        "gitea.defaultOwner": {
+          "type": "string",
+          "default": "",
+          "description": "新建仓库 / 创建 Issue 时的默认所属者（用户名或组织名），留空则使用当前登录用户。"
+        },
+        "gitea.verifyTls": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否校验 HTTPS 证书。自签名证书的内网 Gitea 可关闭。"
+        },
+        "gitea.requestTimeoutMs": {
+          "type": "number",
+          "default": 20000,
+          "description": "单次 API 请求超时（毫秒）。"
+        },
+        "gitea.pageSize": {
+          "type": "number",
+          "default": 50,
+          "description": "列表类接口的分页大小。"
+        },
+        "gitea.ignoreCertificates": {
+          "type": "boolean",
+          "default": false,
+          "description": "与 gitea.verifyTls 等价的反向开关，保留用于兼容旧配置。",
+          "deprecationMessage": "请改用 gitea.verifyTls"
+        },
+        "gitea.enableMcpServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用内置 MCP Server，供 CodeBuddy / VS Code Chat 等 MCP 客户端自动发现并调用。"
+        },
+        "gitea.enableLanguageModelTools": {
+          "type": "boolean",
+          "default": true,
+          "description": "向 AI Agent 注册语言模型工具（vscode.lm.registerTool）。"
+        },
+        "gitea.writeCodeBuddyConfigOnActivate": {
+          "type": "boolean",
+          "default": false,
+          "description": "扩展激活时自动写入工作区 .codebuddy/mcp.json（适用于未实现 MCP Provider 发现机制的旧版客户端）。"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "gitea.setToken",
+        "title": "Gitea: 设置访问令牌",
+        "category": "Gitea",
+        "icon": "$(key)"
+      },
+      {
+        "command": "gitea.clearToken",
+        "title": "Gitea: 清除访问令牌",
+        "category": "Gitea",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "gitea.showCurrentUser",
+        "title": "Gitea: 显示当前登录用户",
+        "category": "Gitea",
+        "icon": "$(account)"
+      },
+      {
+        "command": "gitea.checkCompatibility",
+        "title": "Gitea: 检查版本兼容性",
+        "category": "Gitea",
+        "icon": "$(versions)"
+      },
+      {
+        "command": "gitea.refresh",
+        "title": "Gitea: 刷新所有视图",
+        "category": "Gitea",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitea.openInBrowser",
+        "title": "Gitea: 在浏览器打开",
+        "category": "Gitea",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "gitea.cloneRepo",
+        "title": "Gitea: 克隆仓库到工作区",
+        "category": "Gitea",
+        "icon": "$(repo-clone)"
+      },
+      {
+        "command": "gitea.createRepo",
+        "title": "Gitea: 新建仓库",
+        "category": "Gitea",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "gitea.createBranch",
+        "title": "Gitea: 新建分支",
+        "category": "Gitea",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "gitea.createIssue",
+        "title": "Gitea: 新建 Issue",
+        "category": "Gitea",
+        "icon": "$(issue-opened)"
+      },
+      {
+        "command": "gitea.openIssue",
+        "title": "Gitea: 打开 Issue 详情面板",
+        "category": "Gitea",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "gitea.commentIssue",
+        "title": "Gitea: 回复 Issue / Pull Request",
+        "category": "Gitea",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "gitea.replyCurrent",
+        "title": "Gitea: 在详情面板中回复",
+        "category": "Gitea",
+        "icon": "$(reply)"
+      },
+      {
+        "command": "gitea.toggleIssueState",
+        "title": "Gitea: 关闭 / 重新打开",
+        "category": "Gitea",
+        "icon": "$(issue-reopened)"
+      },
+      {
+        "command": "gitea.createPull",
+        "title": "Gitea: 新建 Pull Request",
+        "category": "Gitea",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "gitea.openPull",
+        "title": "Gitea: 打开 Pull Request 详情面板",
+        "category": "Gitea",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "gitea.showPullDiff",
+        "title": "Gitea: 查看 Pull Request 差异",
+        "category": "Gitea",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "gitea.mergePull",
+        "title": "Gitea: 合并 Pull Request",
+        "category": "Gitea",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "gitea.checkoutPull",
+        "title": "Gitea: 检出 Pull Request 分支",
+        "category": "Gitea",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "gitea.markNotificationRead",
+        "title": "Gitea: 标记通知为已读",
+        "category": "Gitea",
+        "icon": "$(check)"
+      },
+      {
+        "command": "gitea.markAllNotificationsRead",
+        "title": "Gitea: 全部标记通知为已读",
+        "category": "Gitea",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "gitea.copyMcpConfig",
+        "title": "Gitea: 复制 MCP 配置到剪贴板",
+        "category": "Gitea",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "gitea.writeMcpConfig",
+        "title": "Gitea: 写入 MCP 配置文件",
+        "category": "Gitea",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "gitea.showOutput",
+        "title": "Gitea: 显示日志",
+        "category": "Gitea",
+        "icon": "$(output)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitea",
+          "title": "Gitea",
+          "icon": "media/gitea.svg"
+        }
+      ]
+    },
+    "views": {
+      "gitea": [
+        {
+          "id": "gitea.repos",
+          "name": "仓库",
+          "icon": "media/gitea.svg"
+        },
+        {
+          "id": "gitea.issues",
+          "name": "我的 Issue",
+          "icon": "$(issue-opened)"
+        },
+        {
+          "id": "gitea.pulls",
+          "name": "我的 Pull Request",
+          "icon": "$(git-pull-request)"
+        },
+        {
+          "id": "gitea.notifications",
+          "name": "通知",
+          "icon": "$(bell)"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "gitea.repos",
+        "contents": "尚未连接到 Gitea 实例。\n[设置访问令牌](command:gitea.setToken)\n\n访问令牌可在 Gitea 的「设置 → 应用 → 生成令牌」中创建，需勾选 `repo`、`issue`、`notification` 权限。"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "gitea.refresh",
+          "when": "view == gitea.repos || view == gitea.issues || view == gitea.pulls || view == gitea.notifications",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitea.createRepo",
+          "when": "view == gitea.repos",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gitea.createIssue",
+          "when": "view == gitea.issues",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gitea.createPull",
+          "when": "view == gitea.pulls",
+          "group": "navigation@2"
+        },
+        {
+          "command": "gitea.markAllNotificationsRead",
+          "when": "view == gitea.notifications",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "gitea.openInBrowser",
+          "when": "viewItem =~ /^gitea\\.(repo|issue|pull|branch|notification)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitea.cloneRepo",
+          "when": "view == gitea.repos && viewItem == gitea.repo",
+          "group": "1_repo@1"
+        },
+        {
+          "command": "gitea.createBranch",
+          "when": "view == gitea.repos && viewItem == gitea.repo",
+          "group": "1_repo@2"
+        },
+        {
+          "command": "gitea.createIssue",
+          "when": "view == gitea.repos && viewItem == gitea.repo",
+          "group": "1_repo@3"
+        },
+        {
+          "command": "gitea.createPull",
+          "when": "view == gitea.repos && viewItem == gitea.repo",
+          "group": "1_repo@4"
+        },
+        {
+          "command": "gitea.openIssue",
+          "when": "viewItem == gitea.issue",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitea.replyCurrent",
+          "when": "viewItem == gitea.issue",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitea.toggleIssueState",
+          "when": "viewItem == gitea.issue",
+          "group": "1_issue@1"
+        },
+        {
+          "command": "gitea.commentIssue",
+          "when": "viewItem == gitea.issue",
+          "group": "1_issue@2"
+        },
+        {
+          "command": "gitea.openPull",
+          "when": "viewItem == gitea.pull",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitea.replyCurrent",
+          "when": "viewItem == gitea.pull",
+          "group": "inline@2"
+        },
+        {
+          "command": "gitea.showPullDiff",
+          "when": "viewItem == gitea.pull",
+          "group": "inline@3"
+        },
+        {
+          "command": "gitea.checkoutPull",
+          "when": "viewItem == gitea.pull",
+          "group": "1_pull@1"
+        },
+        {
+          "command": "gitea.mergePull",
+          "when": "viewItem == gitea.pull",
+          "group": "1_pull@2"
+        },
+        {
+          "command": "gitea.commentIssue",
+          "when": "viewItem == gitea.pull",
+          "group": "1_pull@3"
+        },
+        {
+          "command": "gitea.toggleIssueState",
+          "when": "viewItem == gitea.pull",
+          "group": "1_pull@4"
+        },
+        {
+          "command": "gitea.markNotificationRead",
+          "when": "viewItem == gitea.notification",
+          "group": "inline@2"
+        }
+      ]
+    },
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "giteaToolkit.mcp",
+        "label": "Gitea Toolkit (MCP)"
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "giteaToolkit.gitea_list_repos",
+        "displayName": "列出仓库",
+        "modelDescription": "列出当前令牌可见的 Gitea 仓库，支持按组织过滤或关键词搜索。返回仓库全名、默认分支、未关闭 Issue / PR 数量与最后更新时间。",
+        "userDescription": "列出 Gitea 仓库",
+        "toolReferenceName": "gitea_list_repos",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "只看某个组织或用户的仓库。"
+            },
+            "search": {
+              "type": "string",
+              "description": "关键词搜索；提供后会走全文搜索接口。"
+            },
+            "mine": {
+              "type": "boolean",
+              "description": "设为 true 时只列出当前令牌所属用户拥有的仓库。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "返回数量上限，默认 30。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_get_repo",
+        "displayName": "获取仓库详情",
+        "modelDescription": "获取指定 Gitea 仓库的详细信息，包括默认分支、权限、是否为空仓库、克隆地址等。",
+        "userDescription": "查看仓库详情",
+        "toolReferenceName": "gitea_get_repo",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_create_repo",
+        "displayName": "创建仓库",
+        "modelDescription": "在 Gitea 上创建新仓库。可通过 `owner` 指定组织；不指定时创建到当前令牌所属用户名下。默认会自动初始化 README。",
+        "userDescription": "创建 Gitea 仓库",
+        "toolReferenceName": "gitea_create_repo",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "仓库名。"
+            },
+            "owner": {
+              "type": "string",
+              "description": "组织名；省略则创建到当前用户名下。"
+            },
+            "description": {
+              "type": "string",
+              "description": "仓库描述。"
+            },
+            "private": {
+              "type": "boolean",
+              "description": "是否设为私有，默认 false。"
+            },
+            "autoInit": {
+              "type": "boolean",
+              "description": "是否自动初始化（生成 README），默认 true。"
+            },
+            "defaultBranch": {
+              "type": "string",
+              "description": "默认分支名，例如 main。"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_branches",
+        "displayName": "列出分支",
+        "modelDescription": "列出仓库的所有分支及其最新提交 SHA。",
+        "userDescription": "列出仓库分支",
+        "toolReferenceName": "gitea_list_branches",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "description": "返回数量上限，默认 50。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_create_branch",
+        "displayName": "创建分支",
+        "modelDescription": "基于已有分支 / 标签 / 提交创建新分支。",
+        "userDescription": "创建分支",
+        "toolReferenceName": "gitea_create_branch",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "newBranch": {
+              "type": "string",
+              "minLength": 1,
+              "description": "新分支名。"
+            },
+            "from": {
+              "type": "string",
+              "description": "源分支 / 标签 / 提交 SHA；省略时基于仓库默认分支。"
+            }
+          },
+          "required": [
+            "newBranch"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_commits",
+        "displayName": "列出提交",
+        "modelDescription": "列出仓库某个分支 / 路径上的提交历史。",
+        "userDescription": "查看提交历史",
+        "toolReferenceName": "gitea_list_commits",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "ref": {
+              "type": "string",
+              "description": "分支名 / 标签 / 提交 SHA；省略时使用默认分支。"
+            },
+            "path": {
+              "type": "string",
+              "description": "仅列出影响该文件或目录的提交。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "返回数量上限，默认 20。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_files",
+        "displayName": "列出目录",
+        "modelDescription": "列出仓库中某个目录下的文件与子目录。",
+        "userDescription": "浏览仓库目录",
+        "toolReferenceName": "gitea_list_files",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "path": {
+              "type": "string",
+              "description": "目录路径，省略表示仓库根目录。"
+            },
+            "ref": {
+              "type": "string",
+              "description": "分支名 / 标签 / 提交 SHA。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_get_file",
+        "displayName": "读取文件",
+        "modelDescription": "读取仓库中指定文件的文本内容（自动 base64 解码），同时返回文件 blob SHA，便于后续更新。",
+        "userDescription": "读取仓库文件",
+        "toolReferenceName": "gitea_get_file",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "filePath": {
+              "type": "string",
+              "minLength": 1,
+              "description": "仓库内文件路径，例如 src/main.ts。"
+            },
+            "ref": {
+              "type": "string",
+              "description": "分支名 / 标签 / 提交 SHA。"
+            }
+          },
+          "required": [
+            "filePath"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_get_commit_status",
+        "displayName": "查询提交状态",
+        "modelDescription": "查询某个分支 / 标签 / 提交的 CI 合并状态（Gitea Actions 等）。返回 overall 状态与每个检查项的明细，可用于判断 PR 是否通过检查。",
+        "userDescription": "查询提交 CI 状态",
+        "toolReferenceName": "gitea_get_commit_status",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "分支名 / 标签 / 提交 SHA。"
+            }
+          },
+          "required": [
+            "ref"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_commit_file",
+        "displayName": "提交文件",
+        "modelDescription": "在仓库中创建或更新一个文件并提交。文件已存在时自动带上 blob SHA 执行更新。可通过 `newBranch` 把改动提交到新分支。",
+        "userDescription": "创建或更新仓库文件",
+        "toolReferenceName": "gitea_commit_file",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "repository"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "filePath": {
+              "type": "string",
+              "minLength": 1,
+              "description": "仓库内文件路径。"
+            },
+            "content": {
+              "type": "string",
+              "description": "文件完整文本内容（无需 base64）。"
+            },
+            "message": {
+              "type": "string",
+              "description": "提交信息。"
+            },
+            "branch": {
+              "type": "string",
+              "description": "目标分支；省略时使用仓库默认分支。"
+            },
+            "newBranch": {
+              "type": "string",
+              "description": "提供时会在该新分支上提交。"
+            }
+          },
+          "required": [
+            "filePath",
+            "content"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_issues",
+        "displayName": "列出 Issue",
+        "modelDescription": "列出 Issue。可限定到具体仓库，也可跨仓库检索（用于「分配给我的 Issue」「我创建的 Issue」「提及我的 Issue」等场景）。",
+        "userDescription": "列出 Gitea Issue",
+        "toolReferenceName": "gitea_list_issues",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "issue"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed",
+                "all"
+              ],
+              "description": "状态筛选，默认 open。"
+            },
+            "search": {
+              "type": "string",
+              "description": "关键词，匹配标题与正文。"
+            },
+            "labels": {
+              "type": "string",
+              "description": "标签名，多个用英文逗号分隔。"
+            },
+            "assignedToMe": {
+              "type": "boolean",
+              "description": "只看分配给我的 Issue。"
+            },
+            "createdByMe": {
+              "type": "boolean",
+              "description": "只看我创建的 Issue。"
+            },
+            "mentionedMe": {
+              "type": "boolean",
+              "description": "只看提及我的 Issue。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "返回数量上限，默认 30。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_get_issue",
+        "displayName": "获取 Issue 详情",
+        "modelDescription": "获取单个 Issue 的完整信息，包含正文、标签、指派人与链接。",
+        "userDescription": "查看 Issue 详情",
+        "toolReferenceName": "gitea_get_issue",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "issue"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Issue 序号（URL 中 # 后面的数字）。"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_create_issue",
+        "displayName": "创建 Issue",
+        "modelDescription": "在仓库中创建 Issue。`labels` 传标签名称（区分大小写不敏感），会自动解析为标签 ID；无法识别的标签会被忽略并在返回结果中说明。",
+        "userDescription": "创建 Gitea Issue",
+        "toolReferenceName": "gitea_create_issue",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "issue"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Issue 标题。"
+            },
+            "body": {
+              "type": "string",
+              "description": "Issue 正文，支持 Markdown。"
+            },
+            "assignees": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "指派人的用户名列表。"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "标签名称列表。"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_update_issue",
+        "displayName": "更新 Issue",
+        "modelDescription": "更新 Issue 的标题、正文、状态（关闭 / 重新打开）、指派人与标签。",
+        "userDescription": "修改 Gitea Issue",
+        "toolReferenceName": "gitea_update_issue",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "issue"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Issue 序号。"
+            },
+            "title": {
+              "type": "string",
+              "description": "新标题。"
+            },
+            "body": {
+              "type": "string",
+              "description": "新正文。"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ],
+              "description": "目标状态。"
+            },
+            "assignees": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "新的指派人用户名列表（整体替换）。"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "新的标签名称列表（整体替换）。"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_comment_issue",
+        "displayName": "评论 Issue",
+        "modelDescription": "在 Issue（或 PR 的对话区）中发表评论。",
+        "userDescription": "评论 Gitea Issue",
+        "toolReferenceName": "gitea_comment_issue",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "issue"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Issue 序号。"
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "description": "评论正文，支持 Markdown。"
+            }
+          },
+          "required": [
+            "index",
+            "body"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_issue_comments",
+        "displayName": "列出 Issue 评论",
+        "modelDescription": "列出 Issue 的时间线评论，用于了解讨论上下文。",
+        "userDescription": "查看 Issue 评论",
+        "toolReferenceName": "gitea_list_issue_comments",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "issue"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "Issue 序号。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "description": "返回数量上限，默认 50。"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_pulls",
+        "displayName": "列出 Pull Request",
+        "modelDescription": "列出仓库的 Pull Request，支持按状态、分支与排序过滤。",
+        "userDescription": "列出 Gitea Pull Request",
+        "toolReferenceName": "gitea_list_pulls",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "pull"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed",
+                "all"
+              ],
+              "description": "状态筛选，默认 open。"
+            },
+            "sort": {
+              "type": "string",
+              "enum": [
+                "oldest",
+                "recentupdate",
+                "leastupdate",
+                "mostcomment",
+                "leastcomment",
+                "priority"
+              ],
+              "description": "排序方式，默认 oldest。"
+            },
+            "head": {
+              "type": "string",
+              "description": "按源分支过滤。"
+            },
+            "base": {
+              "type": "string",
+              "description": "按目标分支过滤。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "返回数量上限，默认 30。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_get_pull",
+        "displayName": "获取 PR 详情",
+        "modelDescription": "获取单个 Pull Request 的详情，包含可合并状态、变更规模、评审人等信息。",
+        "userDescription": "查看 Pull Request 详情",
+        "toolReferenceName": "gitea_get_pull",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "pull"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "PR 序号。"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_get_pull_diff",
+        "displayName": "查看 PR 差异",
+        "modelDescription": "获取 Pull Request 的 unified diff 文本，用于代码评审。内容较长时会被截断，可配合 `gitea_list_pull_files` 先锁定关注文件。",
+        "userDescription": "查看 Pull Request 代码差异",
+        "toolReferenceName": "gitea_get_pull_diff",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "pull"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "PR 序号。"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "diff",
+                "patch"
+              ],
+              "description": "输出格式，默认 diff。"
+            },
+            "maxLength": {
+              "type": "integer",
+              "minimum": 2000,
+              "maximum": 200000,
+              "description": "最大返回字符数，默认 40000。"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_pull_files",
+        "displayName": "列出 PR 变更文件",
+        "modelDescription": "列出 Pull Request 涉及的文件及每个文件的新增 / 删除行数，便于快速定位评审重点。",
+        "userDescription": "列出 Pull Request 变更文件",
+        "toolReferenceName": "gitea_list_pull_files",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "pull"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "PR 序号。"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_create_pull",
+        "displayName": "创建 Pull Request",
+        "modelDescription": "创建 Pull Request。head 与 base 均为分支名，head 可写成 `owner:branch` 形式以支持跨仓库 PR。",
+        "userDescription": "创建 Pull Request",
+        "toolReferenceName": "gitea_create_pull",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "pull"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "description": "PR 标题。"
+            },
+            "head": {
+              "type": "string",
+              "minLength": 1,
+              "description": "源分支名，或 `owner:branch`。"
+            },
+            "base": {
+              "type": "string",
+              "minLength": 1,
+              "description": "目标分支名。"
+            },
+            "body": {
+              "type": "string",
+              "description": "PR 描述，支持 Markdown。"
+            },
+            "reviewers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "评审人用户名列表。"
+            },
+            "assignees": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "指派人用户名列表。"
+            }
+          },
+          "required": [
+            "title",
+            "head",
+            "base"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_merge_pull",
+        "displayName": "合并 Pull Request",
+        "modelDescription": "合并 Pull Request，支持选择合并策略并可在合并后删除源分支。",
+        "userDescription": "合并 Pull Request",
+        "toolReferenceName": "gitea_merge_pull",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "pull"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "PR 序号。"
+            },
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "merge",
+                "rebase",
+                "rebase-merge",
+                "squash",
+                "fast-forward-only"
+              ],
+              "description": "合并策略，默认 merge。"
+            },
+            "deleteBranchAfterMerge": {
+              "type": "boolean",
+              "description": "合并后删除源分支。"
+            },
+            "mergeTitle": {
+              "type": "string",
+              "description": "自定义合并提交标题。"
+            },
+            "mergeMessage": {
+              "type": "string",
+              "description": "自定义合并提交信息。"
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_review_pull",
+        "displayName": "评审 Pull Request",
+        "modelDescription": "提交 PR 评审意见：批准（APPROVED）、请求修改（REQUEST_CHANGES）或仅评论（COMMENT）。",
+        "userDescription": "评审 Pull Request",
+        "toolReferenceName": "gitea_review_pull",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "pull"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "index": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "PR 序号。"
+            },
+            "event": {
+              "type": "string",
+              "enum": [
+                "APPROVED",
+                "REQUEST_CHANGES",
+                "COMMENT"
+              ],
+              "description": "评审动作。"
+            },
+            "body": {
+              "type": "string",
+              "description": "评审说明，支持 Markdown。REQUEST_CHANGES 时建议必填。"
+            }
+          },
+          "required": [
+            "index",
+            "event"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_get_current_user",
+        "displayName": "获取当前用户",
+        "modelDescription": "获取当前访问令牌对应的 Gitea 用户信息。也可用于校验令牌是否有效、实例是否可连通。",
+        "userDescription": "查看当前 Gitea 用户",
+        "toolReferenceName": "gitea_get_current_user",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "account"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_orgs",
+        "displayName": "列出组织",
+        "modelDescription": "列出当前用户所属或可见的 Gitea 组织。",
+        "userDescription": "列出 Gitea 组织",
+        "toolReferenceName": "gitea_list_orgs",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "account"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_list_notifications",
+        "displayName": "列出通知",
+        "modelDescription": "列出当前用户的 Gitea 通知线程，可按类型过滤。",
+        "userDescription": "列出 Gitea 通知",
+        "toolReferenceName": "gitea_list_notifications",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "account"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "includeRead": {
+              "type": "boolean",
+              "description": "是否包含已读通知，默认 false。"
+            },
+            "subjectTypes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "issue",
+                  "pull",
+                  "commit",
+                  "repository"
+                ]
+              },
+              "description": "仅关注的通知类型。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "返回数量上限，默认 30。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit.gitea_mark_notifications_read",
+        "displayName": "标记通知已读",
+        "modelDescription": "把全部通知（或某个时间点之前的通知）标记为已读。",
+        "userDescription": "标记 Gitea 通知为已读",
+        "toolReferenceName": "gitea_mark_notifications_read",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "account"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "all": {
+              "type": "boolean",
+              "description": "是否标记全部通知，默认 true。"
+            },
+            "lastReadAt": {
+              "type": "string",
+              "description": "仅标记该时间点之前的通知，ISO 8601 格式。设置后 `all` 失效。"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "sync:tools": "node scripts/sync-tools.mjs",
+    "check:tools": "node scripts/sync-tools.mjs --check",
+    "version:bump": "node scripts/bump-version.mjs",
+    "version:patch": "node scripts/bump-version.mjs --part=patch",
+    "version:minor": "node scripts/bump-version.mjs --part=minor",
+    "version:major": "node scripts/bump-version.mjs --part=major",
+    "package": "npm run version:patch && npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "vscode:prepublish": "node esbuild.js --production",
+    "preview:icon": "node scripts/preview-icon.mjs",
+    "preview:tree": "node scripts/preview-tree.mjs",
+    "check:icons": "node scripts/preview-tree.mjs --check",
+    "ci": "npm run compile && npm run lint && npm run check:tools && npm run check:icons && npm run check:workflows",
+    "check:workflows": "node scripts/check-workflows.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.1",
+    "@types/node": "^22.15.3",
+    "@types/vscode": "^1.101.0",
+    "@typescript-eslint/eslint-plugin": "^8.31.1",
+    "@typescript-eslint/parser": "^8.31.1",
+    "@vscode/codicons": "^0.0.46-24",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.3",
+    "eslint": "^9.25.1",
+    "typescript": "^5.8.3",
+    "yaml": "^2.9.1"
+  }
+}

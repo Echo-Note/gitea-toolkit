@@ -1,0 +1,13 @@
+node_modules/
+dist/
+out/
+*.vsix
+.DS_Store
+.env
+.env.local
+*.log
+.eslintcache
+
+# AI 协作工作记忆：含本机绝对路径与内部实例信息，仅本地保留
+.codebuddy/memory/
+

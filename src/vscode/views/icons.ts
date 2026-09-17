@@ -1,0 +1,171 @@
+/**
+ * 树节点图标与配色。
+ *
+ * 设计约定：
+ *   - 本文件**不依赖 `vscode` 模块**，只产出 {@link IconSpec} 纯数据。
+ *     好处：可以被 `scripts/preview-tree.mjs` 直接打包，用真实 codicon 字体把侧边栏渲染出来核对
+ *     （VS Code 对拼错的图标名是**静默忽略**的，肉眼看不出问题，必须能离线验证）。
+ *     转换成 `vscode.ThemeIcon` 的职责在 `nodes.ts` 的 `toThemeIcon()`。
+ *   - 一律使用内置 codicon，不引入图片资源
+ *   - 需要表达状态时叠加 `charts.*` 主题色，浅色 / 深色主题自动适配，无需维护两套资源
+ */
+
+/** 图标描述（与 `vscode.ThemeIcon` 一一对应）。 */
+export interface IconSpec {
+  /** codicon ID，例如 `git-branch`。 */
+  id: string;
+  /** 可选的 `charts.*` 主题色 ID。 */
+  color?: string;
+}
+
+/** 状态语义色（VS Code 主题色 ID）。 */
+export const COLOR = {
+  /** 进行中 / 通过。 */
+  open: 'charts.green',
+  /** 已关闭 / 已合并。 */
+  closed: 'charts.purple',
+  /** 异常 / 被拒。 */
+  danger: 'charts.red',
+  /** 需要注意（受保护）。 */
+  warn: 'charts.yellow',
+  /** 信息（未读）。 */
+  info: 'charts.blue',
+} as const;
+
+/**
+ * 构造图标描述。
+ * @param id codicon ID
+ * @param color 可选的 `charts.*` 主题色
+ * @returns 图标描述
+ */
+function icon(id: string, color?: string): IconSpec {
+  return color ? { id, color } : { id };
+}
+
+/** 仓库节点的区分标记。 */
+export interface RepoIconFlags {
+  private?: boolean;
+  archived?: boolean;
+  fork?: boolean;
+  empty?: boolean;
+}
+
+/**
+ * 仓库节点图标：按「归档 → Fork → 私有 → 普通」优先级区分。
+ * @param flags 仓库标记
+ * @returns 图标描述
+ */
+export function repoIcon(flags: RepoIconFlags = {}): IconSpec {
+  if (flags.archived) {
+    return icon('archive', COLOR.warn);
+  }
+  if (flags.fork) {
+    return icon('repo-forked');
+  }
+  if (flags.private) {
+    return icon('lock');
+  }
+  return icon('repo');
+}
+
+/** 分组节点图标（分支 / Issue / PR 分类容器）。 */
+export const groupIcons = {
+  /** 分支分组。 */
+  branches: (): IconSpec => icon('git-branch'),
+  /** 打开的 Issue 分组。 */
+  issues: (): IconSpec => icon('issue-opened', COLOR.open),
+  /** 打开的 PR 分组。 */
+  pulls: (): IconSpec => icon('git-pull-request', COLOR.open),
+};
+
+/**
+ * 分支节点图标：受保护分支用锁 + 警示色。
+ * @param protectedBranch 是否受保护
+ * @returns 图标描述
+ */
+export function branchIcon(protectedBranch: boolean): IconSpec {
+  return protectedBranch ? icon('lock', COLOR.warn) : icon('git-branch');
+}
+
+/**
+ * Issue 节点图标。
+ * @param state Issue 状态（`open` / `closed`）
+ * @returns 图标描述
+ */
+export function issueIcon(state: string): IconSpec {
+  return state === 'open' ? icon('issue-opened', COLOR.open) : icon('issue-closed', COLOR.closed);
+}
+
+/**
+ * Pull Request 节点图标：已合并 → 已关闭未合并 → 草稿 → 进行中。
+ * @param state PR 状态
+ * @returns 图标描述
+ */
+export function pullIcon(state: { state: string; merged?: boolean; draft?: boolean }): IconSpec {
+  if (state.merged) {
+    return icon('git-merge', COLOR.closed);
+  }
+  if (state.state !== 'open') {
+    return icon('git-pull-request-closed', COLOR.danger);
+  }
+  if (state.draft) {
+    return icon('git-pull-request-draft');
+  }
+  return icon('git-pull-request', COLOR.open);
+}
+
+/**
+ * 通知节点图标：按主题类型选图标，未读时用信息色标出。
+ * @param subjectType 主题类型（`Issue` / `Pull` / `Commit` / `Repository`）
+ * @param unread 是否未读
+ * @returns 图标描述
+ */
+export function notificationIcon(subjectType: string | undefined, unread: boolean): IconSpec {
+  const byType: Record<string, string> = {
+    Issue: 'issue-opened',
+    Pull: 'git-pull-request',
+    Commit: 'git-commit',
+    Repository: 'repo',
+  };
+  return unread ? icon(byType[subjectType ?? ''] ?? 'bell', COLOR.info) : icon(byType[subjectType ?? ''] ?? 'bell');
+}
+
+/** 「我的 Issue」视图三个分组的图标。 */
+export const issueGroupIcons = {
+  /** 分配给我。 */
+  assigned: (): IconSpec => icon('account'),
+  /** 我创建的。 */
+  created: (): IconSpec => icon('edit'),
+  /** 提及我的。 */
+  mentioned: (): IconSpec => icon('mention'),
+};
+
+/** 「我的 Pull Request」视图三个分组的图标。 */
+export const pullGroupIcons = {
+  /** 待我评审。 */
+  reviewRequested: (): IconSpec => icon('eye'),
+  /** 我创建的。 */
+  created: (): IconSpec => icon('edit'),
+  /** 全部打开。 */
+  all: (): IconSpec => icon('git-pull-request', COLOR.open),
+};
+
+/** 提示 / 空状态节点使用的裸 codicon（无主题色）。 */
+export const messageIcons = {
+  /** 未配置令牌。 */
+  noToken: 'key',
+  /** 没有仓库。 */
+  noRepo: 'repo',
+  /** 没有分支。 */
+  noBranch: 'git-branch',
+  /** 没有 Issue。 */
+  noIssue: 'issue-opened',
+  /** 没有 PR。 */
+  noPull: 'git-pull-request',
+  /** 没有通知。 */
+  noNotification: 'bell',
+  /** 加载失败。 */
+  error: 'error',
+  /** 还有更多。 */
+  more: 'ellipsis',
+} as const;

@@ -1,0 +1,267 @@
+name: CI
+
+# 触发时机：
+#   - 推送到 main
+#   - 面向 main 的 PR
+#   - 手动触发
+# 打 tag 走 release.yml，这里不重复处理。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支只保留最新一次运行，避免连续推送时排队堆积
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# 默认最小权限，需要写 issue 的 job 再单独提权
+permissions:
+  contents: read
+
+env:
+  # 扩展宿主内置的 Node 版本较旧，esbuild 的 target 是 node20；
+  # CI 用当前 LTS（22）验证，产物本身向下兼容 node20。
+  NODE_VERSION: '22'
+
+jobs:
+  verify:
+    name: 校验（类型 / Lint / 清单）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查（tsc --noEmit）
+        run: npm run compile
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 校验 AI 工具清单与代码定义一致
+        # 防止改了 src/ai/tools 却忘了同步 package.json 的 contributes.languageModelTools
+        run: npm run check:tools
+
+      - name: 校验 codicon 图标名真实存在
+        # VS Code 对拼错的图标名是静默忽略的，必须在 CI 拦住
+        run: npm run check:icons
+
+  package:
+    name: 构建打包
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 打包 VSIX
+        # 关键：CI 里必须跳过版本号递增。
+        # 否则每次构建都会改写 package.json 与 CHANGELOG.md，且版本号会随流水线无意义地涨。
+        run: SKIP_VERSION_BUMP=1 npm run package
+
+      - name: 展示产物信息
+        run: |
+          ls -lh ./*.vsix
+          node -e "const p=require('./package.json');console.log('版本:',p.version)"
+
+      - name: 上传 VSIX
+        uses: actions/upload-artifact@v7
+        with:
+          name: gitea-toolkit-vsix
+          path: '*.vsix'
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 上传构建产物（可选，便于排查打包差异）
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-on-failure
+          path: dist/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  report-failure:
+    name: 构建失败 → 创建 Issue
+    needs: [verify, package]
+    # 只在 main 分支失败时建 issue：
+    #   - PR 失败不建，否则每个 bugfix 分支都会刷 issue
+    #   - main 失败说明主干已损坏，必须有人知道
+    if: ${{ failure() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      # 注意：显式声明 permissions 后，未列出的 scope 会被置为 none。
+      # 读取 workflow run 的 job 列表需要 actions: read，漏掉会直接 403。
+      actions: read
+    steps:
+      - name: 创建或更新失败 Issue
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const LABEL = 'ci-failure';
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            // 1) 确保 label 存在（给不存在的 label 建 issue 会直接报错）
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: LABEL });
+            } catch (error) {
+              if (error.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: LABEL,
+                  color: 'd73a4a',
+                  description: '主干 CI 构建失败（修复后自动关闭）',
+                });
+              } else {
+                throw error;
+              }
+            }
+
+            // 2) 收集失败的 job。
+            //    拿不到详情不应该让「报告失败」这件事本身也失败，因此降级为提示看日志。
+            let failedList = '- 未能获取失败 job 详情，请查看运行日志';
+            try {
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner,
+                repo,
+                run_id: context.runId,
+                per_page: 100,
+              });
+              const failed = jobs.filter((job) => job.conclusion === 'failure');
+              if (failed.length > 0) {
+                failedList = failed.map((job) => `- [\`${job.name}\`](${job.html_url})`).join('\n');
+              }
+            } catch (error) {
+              core.warning(`获取失败 job 详情出错：${error.message}`);
+            }
+
+            const sha = (context.sha || '').slice(0, 7);
+            const body = [
+              '## 主干构建失败',
+              '',
+              '| 项目 | 值 |',
+              '| --- | --- |',
+              `| 分支 | \`${context.ref.replace('refs/heads/', '')}\` |`,
+              `| 提交 | [\`${sha}\`](${context.serverUrl}/${owner}/${repo}/commit/${context.sha}) |`,
+              `| 触发 | ${context.eventName} · @${context.actor} |`,
+              `| 运行 | [#${context.runNumber}](${runUrl}) |`,
+              '',
+              '### 失败的步骤',
+              '',
+              failedList,
+              '',
+              '### 本地复现',
+              '',
+              '```bash',
+              'npm ci',
+              'npm run ci        # 类型检查 + ESLint + 工具清单 + 图标名校验',
+              'npm run package   # 打包（本地会递增版本号，CI 中已跳过）',
+              '```',
+              '',
+              '### 处理说明',
+              '',
+              `修复后重新推送到 \`main\`，CI 通过时该 issue 会被**自动关闭**。`,
+              '',
+              `<!-- ci-failure-report -->`,
+            ].join('\n');
+
+            // 3) 幂等：已有未关闭的失败 issue 就追加评论，而不是再建一个
+            const existing = await github.rest.issues.listForRepo({
+              owner,
+              repo,
+              state: 'open',
+              labels: LABEL,
+              per_page: 5,
+            });
+
+            if (existing.data.length > 0) {
+              const issue = existing.data[0];
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `### 再次失败\n\n${body}`,
+              });
+              core.info(`已在 #${issue.number} 追加失败记录`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title: '[CI] main 分支构建失败',
+                body,
+                labels: [LABEL],
+              });
+              core.info(`已创建 issue #${created.data.number}`);
+            }
+
+  close-failure-issue:
+    name: 构建恢复 → 关闭 Issue
+    needs: [verify, package]
+    # 形成闭环：修好之后不用人工去关那个失败 issue
+    if: ${{ success() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: 关闭遗留的失败 Issue
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const LABEL = 'ci-failure';
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: LABEL,
+              per_page: 20,
+            });
+
+            for (const issue of open) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `✅ CI 已恢复，自动关闭该 issue。\n\n通过运行：[#${context.runNumber}](${runUrl})`,
+              });
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+              core.info(`已关闭 #${issue.number}`);
+            }
+
+            if (open.length === 0) {
+              core.info('没有遗留的失败 issue');
+            }
