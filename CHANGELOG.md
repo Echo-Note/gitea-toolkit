@@ -27,6 +27,17 @@
 - CodeBuddy 中的用户级配置需要包含访问令牌（`GITEA_TOKEN`）才能工作；
   该令牌由扩展从 `SecretStorage` 读取后写入，或沿用配置中已有的令牌。
 
+### 工程
+
+- 发布产物增加 `SHA256SUMS` 校验和附件；CI 在发版前会先 `sha256sum -c` 自校验一遍，
+  确保附件与校验和确实对得上（v0.1.5 的 Release 已补传该附件）。
+- **不额外打包 zip**：`.vsix` 本身就是 deflate 压缩的 zip 容器，套一层只会让体积变大，
+  且 `code --install-extension` 不认 zip，用户还得多解压一步。
+  需要源码的话，GitHub Release 页面已自动提供 `Source code (zip/tar.gz)`。
+- 注意：vsix 构建**不是字节级可复现**的（zip 内含时间戳等），本地重新构建得到的 hash
+  与发布件必然不同。因此 `SHA256SUMS` 只能用于核对「下载到的文件是否就是 CI 产出的那一份」，
+  它和 vsix 同源生成，**不构成防篡改的信任根**。
+
 ## [0.1.4] - 2026-09-17
 
 ### 新增

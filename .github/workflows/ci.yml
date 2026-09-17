@@ -81,16 +81,27 @@ jobs:
         # 否则每次构建都会改写 package.json 与 CHANGELOG.md，且版本号会随流水线无意义地涨。
         run: SKIP_VERSION_BUMP=1 npm run package
 
+      - name: 生成校验和
+        # 发布物就两样：.vsix 本身 + 独立校验和。
+        # 不再额外打压缩包 —— .vsix 已经是 deflate 压缩的 zip，套一层只会变大，
+        # 而且 `code --install-extension` 不认 zip，用户还得多解压一步。
+        run: |
+          set -euo pipefail
+          sha256sum *.vsix > SHA256SUMS
+          cat SHA256SUMS
+
       - name: 展示产物信息
         run: |
-          ls -lh ./*.vsix
+          ls -lh ./*.vsix SHA256SUMS
           node -e "const p=require('./package.json');console.log('版本:',p.version)"
 
-      - name: 上传 VSIX
+      - name: 上传 VSIX 与校验和
         uses: actions/upload-artifact@v7
         with:
           name: gitea-toolkit-vsix
-          path: '*.vsix'
+          path: |
+            *.vsix
+            SHA256SUMS
           if-no-files-found: error
           retention-days: 30
 
@@ -148,6 +159,14 @@ jobs:
             echo "v${VERSION} 尚未发布，准备创建 tag 与 Release"
           fi
 
+      - name: 校验产物完整性
+        # 用 package job 生成的校验和，确认跨 job 传递后产物未损坏
+        # （同时保证发布出去的 hash 与附件确实对得上）
+        run: |
+          set -euo pipefail
+          test -f SHA256SUMS || { echo "::error::缺少 SHA256SUMS"; exit 1; }
+          sha256sum -c SHA256SUMS
+
       - name: 创建 Release（同时依据打包版本打 tag）
         id: publish
         if: steps.resolve.outputs.tag_exists == 'false'
@@ -162,7 +181,7 @@ jobs:
             exit 1
           }
           # --target 让 tag 精确指向本次实际构建的提交，避免落到别的提交上
-          gh release create "v${VERSION}" "gitea-toolkit-${VERSION}.vsix" \
+          gh release create "v${VERSION}" "gitea-toolkit-${VERSION}.vsix" SHA256SUMS \
             --target "${GITHUB_SHA}" \
             --title "v${VERSION}" \
             --generate-notes
@@ -177,9 +196,13 @@ jobs:
             echo "## 发版结果"
             echo
             if [ "${TAG_EXISTS}" = "false" ]; then
-              echo "✅ 已创建 tag \`v${VERSION}\` 并发布 Release（附件 \`gitea-toolkit-${VERSION}.vsix\`）"
+              echo "✅ 已创建 tag \`v${VERSION}\` 并发布 Release"
+              echo
+              echo "附件：\`gitea-toolkit-${VERSION}.vsix\`、\`SHA256SUMS\`"
               echo
               echo "Release：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
+              echo
+              echo "校验下载：\`shasum -a 256 -c SHA256SUMS\`"
             else
               echo "⏭️ 跳过：\`v${VERSION}\` 已存在（版本号未变更）"
               echo

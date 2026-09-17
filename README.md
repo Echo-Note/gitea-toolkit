@@ -13,7 +13,33 @@
 
 ## 一、快速开始
 
-1. 安装扩展后，命令面板执行 **`Gitea: 设置访问令牌`**
+### 安装
+
+从 [Releases](https://github.com/Echo-Note/gitea-toolkit/releases) 下载 `.vsix`：
+
+```bash
+# VS Code
+code --install-extension gitea-toolkit-<版本>.vsix
+
+# CodeBuddy（CN 版）
+"/Applications/CodeBuddy CN.app/Contents/Resources/app/bin/code" \
+  --install-extension gitea-toolkit-<版本>.vsix
+```
+
+核对下载是否与 CI 产出一致：
+
+```bash
+shasum -a 256 -c SHA256SUMS
+```
+
+> Release 只有 `.vsix` 与 `SHA256SUMS` 两个附件，**不额外提供 zip**：
+> `.vsix` 本身就是 deflate 压缩的 zip，再套一层只会变大，且 `--install-extension` 不认 zip。
+> 另外注意，`SHA256SUMS` 与 vsix **同源生成**，只能证明「文件与 CI 产出一致」，
+> 防不了「两者被一起替换」——它不构成防篡改的信任根。
+
+### 配置
+
+1. 命令面板执行 **`Gitea: 设置访问令牌`**
    - 首次会要求填写实例地址（例如 `https://gitea.example.com`）
    - 令牌在 Gitea 的「设置 → 应用 → 生成令牌」中创建，需勾选 `repo`、`issue`、`notification` 权限
    - 令牌保存在系统钥匙串（`SecretStorage`），**不会写入 settings.json**
