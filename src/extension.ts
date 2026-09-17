@@ -18,6 +18,7 @@ import { logError, logInfo, logWarn, disposeLog } from './vscode/logger';
 import { autoWriteCodeBuddyConfig, repairCodeBuddyUserMcpConfig } from './vscode/mcpConfigWriter';
 import { GiteaService } from './vscode/service';
 import { StatusBarController } from './vscode/statusBar';
+import { autoCheckForUpdates } from './vscode/updateChecker';
 import { IssuesProvider } from './vscode/views/issuesProvider';
 import { NotificationsProvider } from './vscode/views/notificationsProvider';
 import { PullsProvider } from './vscode/views/pullsProvider';
@@ -64,6 +65,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // 后台核对服务端版本：仅在版本与上次告警的不同时弹窗，因此不会反复打扰
   void checkCompatibilityOnActivate(context, service);
+
+  // 本扩展经 GitHub Releases 分发（未上 Marketplace），编辑器不会自动更新，故每天主动查一次。
+  // 内部已做「每天最多一次 + 同一版本只提示一次 + 失败静默」的节流。
+  void autoCheckForUpdates(context).catch((error) => {
+    logWarn('自动检查扩展更新失败', error);
+  });
 
   logInfo('Gitea Toolkit 激活完成');
 }

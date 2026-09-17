@@ -2,6 +2,39 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.2.0] - 2026-09-17
+
+### 新增
+
+- **检查扩展自身更新**。本扩展经 GitHub Releases 分发、未发布到 Marketplace，
+  编辑器**不会自动更新**，此前用户只能自己盯 Releases 页面。
+  - 新命令 `Gitea: 检查更新`，手动检查并给出明确结果（含「已是最新」反馈）
+  - 激活后每天自动检查一次（新配置项 `gitea.checkUpdates`，默认开启）
+  - 发现新版本时可一键跳转 `.vsix` 下载或查看 Release 说明
+  - 提示里附带「不再提醒」，会关闭 `gitea.checkUpdates`
+
+  节流与容错设计：
+  - 「上次检查时间」**只在请求成功后写入**，网络抖动不会让用户白等一天
+  - 同一个新版本只提示一次
+  - 除手动触发外，任何网络 / 解析失败都只写日志，不弹窗打扰
+  - TLS 校验恒定开启，**不继承** `gitea.verifyTls`（那个开关是给内网自签名 Gitea 实例用的，
+    不应影响对 github.com 的请求）
+  - 使用 `node:https` 而非全局 `fetch`，以便显式控制超时并把 404 / 频率受限 / 超时区分开
+
+### 变更
+
+- `package.json` 补上 `repository` 字段（此前缺失，打包需加 `--allow-missing-repository`）。
+  更新检查即从该字段推导 GitHub 坐标，因此也能正确处理 fork 后的仓库地址。
+
+### 说明
+
+- 版本比较**不复用** `core/version.ts` 里的 Gitea 版本解析：那套只看 `major.minor`、
+  且忽略预发布标识，用在扩展自身上会出错（`0.1.10` 必须大于 `0.1.9`）。
+  新增 `core/selfUpdate.ts` 实现完整的 semver 优先级规则，含预发布段比较
+  （`0.2.0-rc.1 < 0.2.0`、`rc.2 < rc.10`、数字段优先级低于字母段）。
+- 更新检查只做「提示 + 跳转下载」，**不自动下载或安装**：自动安装需依赖
+  `workbench.extensions.installExtension` 这类未公开的内部命令，不适合作为默认行为。
+
 ## [0.1.5] - 2026-09-17
 
 ### 修复

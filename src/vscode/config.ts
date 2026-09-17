@@ -31,6 +31,8 @@ export interface GiteaSettings {
   enableLanguageModelTools: boolean;
   /** 激活时是否自动写入 .codebuddy/mcp.json。 */
   writeCodeBuddyConfigOnActivate: boolean;
+  /** 是否每天自动检查扩展自身的新版本。 */
+  checkUpdates: boolean;
 }
 
 /**
@@ -51,6 +53,7 @@ export function readSettings(): GiteaSettings {
     enableMcpServer: config.get<boolean>('enableMcpServer', true),
     enableLanguageModelTools: config.get<boolean>('enableLanguageModelTools', true),
     writeCodeBuddyConfigOnActivate: config.get<boolean>('writeCodeBuddyConfigOnActivate', false),
+    checkUpdates: config.get<boolean>('checkUpdates', true),
   };
 }
 

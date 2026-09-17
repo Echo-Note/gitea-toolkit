@@ -2,9 +2,13 @@
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
   "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "publisher": "echo-note",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Echo-Note/gitea-toolkit.git"
+  },
   "engines": {
     "vscode": "^1.101.0"
   },
@@ -73,6 +77,11 @@
           "type": "boolean",
           "default": false,
           "description": "扩展激活时自动写入工作区 .codebuddy/mcp.json（适用于未实现 MCP Provider 发现机制的旧版客户端）。"
+        },
+        "gitea.checkUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "每天检查一次扩展自身的新版本。本扩展经 GitHub Releases 分发（未上 Marketplace），编辑器不会自动更新，故需主动查询；关闭后仍可用「Gitea: 检查更新」手动检查。"
         }
       }
     },
@@ -100,6 +109,12 @@
         "title": "Gitea: 检查版本兼容性",
         "category": "Gitea",
         "icon": "$(versions)"
+      },
+      {
+        "command": "gitea.checkForUpdates",
+        "title": "Gitea: 检查更新",
+        "category": "Gitea",
+        "icon": "$(cloud-download)"
       },
       {
         "command": "gitea.refresh",

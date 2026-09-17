@@ -47,6 +47,21 @@ shasum -a 256 -c SHA256SUMS
 
 内网自签名证书场景：把 `gitea.verifyTls` 设为 `false`。
 
+### 更新扩展
+
+本扩展经 GitHub Releases 分发，**未发布到 Marketplace，编辑器不会自动更新**，因此内置了更新检查：
+
+- 激活后每天自动检查一次（`gitea.checkUpdates`，默认开启），发现新版本时提示
+- 也可随时手动执行 **`Gitea: 检查更新`**
+- 提示里可直接跳到 `.vsix` 下载，下载后建议按「安装」一节核对 `SHA256SUMS`
+
+> **别混淆这两个命令**：
+> `Gitea: 检查更新` 查的是**扩展自身**的版本；
+> `Gitea: 检查版本兼容性` 查的是**服务端 Gitea** 的版本与本扩展已核对版本的差异。
+
+自动检查的节流策略：每天最多请求一次 GitHub，且**只在请求成功后才记录时间**（网络抖动不会白等一天）；
+同一个新版本只提示一次；任何失败都只写日志、不打扰用户。
+
 ### 版本兼容性校验
 
 本扩展所有接口调用以 **Gitea 1.26.4** 的 OpenAPI 规范逐项核对（常量定义在
@@ -140,7 +155,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | 分类 | 命令 |
 | --- | --- |
 | 认证 | `Gitea: 设置访问令牌`、`Gitea: 清除访问令牌`、`Gitea: 显示当前登录用户`、`Gitea: 检查版本兼容性` |
-| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志` |
+| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志`、`Gitea: 检查更新` |
 | 仓库 | `Gitea: 克隆仓库到工作区`、`Gitea: 新建仓库`、`Gitea: 新建分支` |
 | Issue / PR | `Gitea: 新建 Issue`、`Gitea: 打开 Issue 详情面板`、`Gitea: 回复 Issue / Pull Request`、`Gitea: 在详情面板中回复`、`Gitea: 关闭 / 重新打开` |
 | Pull Request | `Gitea: 新建 Pull Request`、`Gitea: 打开 Pull Request 详情面板`、`Gitea: 查看 Pull Request 差异`、`Gitea: 合并 Pull Request`、`Gitea: 检出 Pull Request 分支` |
@@ -287,6 +302,7 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit.mcp', { ... });
 | `gitea.enableMcpServer` | `true` | 是否启用内置 MCP Server |
 | `gitea.enableLanguageModelTools` | `true` | 是否注册语言模型工具 |
 | `gitea.writeCodeBuddyConfigOnActivate` | `false` | 激活时自动写入**工作区** `.codebuddy/mcp.json`（仅当文件不存在时） |
+| `gitea.checkUpdates` | `true` | 每天检查一次**扩展自身**的新版本 |
 
 > 另有 `gitea.ignoreCertificates`，是 `gitea.verifyTls` 的反向兼容别名（已标记废弃），
 > 仅为兼容旧配置保留，新配置请一律使用 `gitea.verifyTls`。
