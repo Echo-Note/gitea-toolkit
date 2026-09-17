@@ -151,21 +151,30 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 
 ---
 
-## 四、在 CodeBuddy 中使用
+## 四、接入 AI 助手
 
-先说结论——**不同客户端接入方式不同**：
+扩展提供两条**互相独立**的接入路径，可同时启用：
 
-| 客户端 | 接入方式 |
+| 路径 | 实现方式 | 适用客户端 |
+| --- | --- | --- |
+| **MCP Server** | 独立 stdio 子进程，暴露 27 个工具 | CodeBuddy、VS Code 及任意 MCP 客户端 |
+| **语言模型工具** | `vscode.lm.registerTool`，常驻扩展宿主 | VS Code 系 |
+
+### MCP Server：按客户端选接入方式
+
+**前提**：先在「一、快速开始」里配好实例地址与访问令牌，否则服务能出现但调不通（会提示未设置令牌）。
+
+| 客户端 | 怎么让它出现 |
 | --- | --- |
-| **CodeBuddy** | **不消费** VS Code 的 MCP 贡献点，必须把配置落盘到用户级 `~/.codebuddy/mcp.json` |
-| **VS Code** | 支持 MCP Definition Provider，扩展激活后自动出现在 MCP 面板 |
-| 其它 MCP 客户端 | 复制配置片段手动粘贴 |
+| **CodeBuddy** | **不消费** VS Code 的 MCP 贡献点，必须落盘 → 执行 `Gitea: 写入 CodeBuddy MCP 配置` |
+| **VS Code** | 支持 MCP Definition Provider → 扩展激活后自动出现在 MCP 面板，**无需落盘** |
+| 其它 MCP 客户端 | `Gitea: 复制 MCP 配置到剪贴板`，粘贴进客户端的 MCP 配置 |
 
 > 这一点实测确认过：CodeBuddy 的 MCP 面板完全由 `~/.codebuddy/mcp.json` 驱动。
 > 即使扩展已经在 `package.json` 声明 `contributes.mcpServerDefinitionProviders`
 > 并成功调用了 `vscode.lm.registerMcpServerDefinitionProvider`，面板里**依然不会出现**该服务。
 
-### CodeBuddy：一条命令接入
+#### CodeBuddy
 
 命令 **`Gitea: 写入 CodeBuddy MCP 配置`** 会把 `mcpServers.gitea` **合并**写入用户级配置
 （优先写已存在的 `~/.codebuddy/mcp.json`，不动其它 server）。随后在 CodeBuddy 的
@@ -175,9 +184,9 @@ MCP 面板刷新（或重启编辑器），即可看到名为 `gitea` 的服务�
 扩展每次激活都会检查用户级配置里指向本扩展的脚本路径，发现过期就静默改写
 （仅在该文件已存在、且其中确有本扩展的条目时才动，不会凭空创建配置）。
 
-### VS Code：自动发现
+#### VS Code
 
-VS Code 支持 VS Code 的 MCP 扩展点，扩展注册后无需落盘：
+VS Code 支持 MCP Definition Provider，扩展注册后无需落盘：
 
 ```jsonc
 // package.json
@@ -193,22 +202,7 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit.mcp', { ... });
 
 访问令牌在「服务器即将启动」回调中才注入，不会长期停留在配置对象里。
 
-同时，扩展还会注册 **27 个语言模型工具**（`giteaToolkit.gitea_*`），
-在 Craft / Agent 模式下输入任务即可被自动调用，例如：
-
-> 帮我在 team/demo 建一个 Issue：登录接口在弱网下超时，标签 bug，指派给 lisi
-
-> 看一下 #42 这个 PR 的 diff，如果有问题就发一条 review 请求修改，否则批准
-
-> 帮我基于 main 建一个 `feature/login-timeout` 分支，提交 README 变更，然后开一个 PR 指派 lisi 评审
-
-> 关闭 #7，并在下面回一条「已在新版本修复」
-
-**写操作会强制确认**：`gitea_create_*`、`gitea_update_issue`、`gitea_merge_pull`、
-`gitea_review_pull`、`gitea_commit_file` 等在 VS Code 语言模型工具路径下会先弹出确认卡片，
-展示完整入参，避免 AI 误改线上数据。
-
-### 工作区级配置（可选）
+#### 其它客户端与工作区级配置
 
 命令 **`Gitea: 写入 MCP 配置文件（工作区）`** 会把配置写进当前工作区，可选：
 
@@ -241,7 +235,24 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit.mcp', { ... });
 }
 ```
 
-### 方式 C：只读探测
+### 语言模型工具
+
+扩展注册 **27 个语言模型工具**（`giteaToolkit.gitea_*`），
+在 Craft / Agent 模式下输入任务即可被自动调用，例如：
+
+> 帮我在 team/demo 建一个 Issue：登录接口在弱网下超时，标签 bug，指派给 lisi
+
+> 看一下 #42 这个 PR 的 diff，如果有问题就发一条 review 请求修改，否则批准
+
+> 帮我基于 main 建一个 `feature/login-timeout` 分支，提交 README 变更，然后开一个 PR 指派 lisi 评审
+
+> 关闭 #7，并在下面回一条「已在新版本修复」
+
+**写操作会强制确认**：`gitea_create_*`、`gitea_update_issue`、`gitea_merge_pull`、
+`gitea_review_pull`、`gitea_commit_file` 等在 VS Code 语言模型工具路径下会先弹出确认卡片，
+展示完整入参，避免 AI 误改线上数据。
+
+### 校验连通性
 
 `Gitea: 显示当前登录用户` 可用于校验令牌与实例连通性（也会写入日志）。
 
@@ -275,7 +286,10 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit.mcp', { ... });
 | `gitea.pageSize` | `50` | 列表分页大小 |
 | `gitea.enableMcpServer` | `true` | 是否启用内置 MCP Server |
 | `gitea.enableLanguageModelTools` | `true` | 是否注册语言模型工具 |
-| `gitea.writeCodeBuddyConfigOnActivate` | `false` | 激活时自动写入 `.codebuddy/mcp.json` |
+| `gitea.writeCodeBuddyConfigOnActivate` | `false` | 激活时自动写入**工作区** `.codebuddy/mcp.json`（仅当文件不存在时） |
+
+> 另有 `gitea.ignoreCertificates`，是 `gitea.verifyTls` 的反向兼容别名（已标记废弃），
+> 仅为兼容旧配置保留，新配置请一律使用 `gitea.verifyTls`。
 
 ---
 
@@ -439,8 +453,9 @@ Webview 通过 `Content-Security-Policy` + nonce 锁定脚本来源，图片只�
 - 合并策略仅支持 `merge` / `squash` / `rebase` / `rebase-merge`；强制合并与
   「检查通过后自动合并」需在 Gitea 网页端操作。
 - MCP Server 以子进程运行，无法直接打开系统浏览器（相关工具只返回链接）。
-- 若客户端不支持 MCP Definition Provider 且未配置 `mcp.json`，AI 工具不会出现在对话中，
-  此时请使用方式 B。
+- AI 工具没出现在对话里时，对照「四、接入 AI 助手」先确认你的客户端走哪条路：
+  CodeBuddy 必须先用 `Gitea: 写入 CodeBuddy MCP 配置` 落盘，VS Code 则开箱即用。
+  也别漏了前提——未设置访问令牌时服务能出现，但调用会失败。
 
 ## 九、许可证
 

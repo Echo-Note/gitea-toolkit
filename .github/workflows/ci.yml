@@ -4,12 +4,24 @@ name: CI
 #   - 推送到 main
 #   - 面向 main 的 PR
 #   - 手动触发
-# 打 tag 走 release.yml，这里不重复处理。
+#
+# 纯文档改动不触发（见 paths-ignore）：改 README / CHANGELOG 不需要跑类型检查与打包。
+# 注意 package.json **不在**忽略列表里 —— 版本号递增正是发版的触发条件，不能漏。
+#
+# ⚠️ 若将来给 main 加分支保护、并把本 workflow 设为必需状态检查，
+#    paths-ignore 会让「只改文档的 PR」不产生任何检查结果，从而永远等不到状态、无法合并。
+#    届时改用「一个永远运行的 gate job + 各 job 按 paths 条件执行」的写法。
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
   workflow_dispatch:
 
 # 同一分支只保留最新一次运行，避免连续推送时排队堆积
