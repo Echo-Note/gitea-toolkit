@@ -2,6 +2,31 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.1.5] - 2026-09-17
+
+### 修复
+
+- **CodeBuddy 的 MCP 面板里看不到 `Gitea Toolkit`**。原因：CodeBuddy **不消费** VS Code 的
+  `contributes.mcpServerDefinitionProviders` 贡献点，它的 MCP 面板完全由用户级
+  `~/.codebuddy/mcp.json` 驱动。此前只有 `mcpServerDefinitionProviders` 这条路，
+  因此在 CodeBuddy 中始终无法被发现。
+  - 新增命令 **`Gitea: 写入 CodeBuddy MCP 配置`**：把 `mcpServers.gitea` 合并写入用户级配置
+    （优先写已存在的 `~/.codebuddy/mcp.json`，保留其它 server）
+  - 激活时**自动修复过期脚本路径**：扩展安装目录名含版本号，升级后旧路径会失效
+    （表现为该服务启动失败）。仅在配置文件已存在且其中确有本扩展条目时改写，不会凭空创建
+  - `gitea.writeMcpConfig` 更名为「写入 MCP 配置文件（工作区）」以区分作用范围
+  - 编辑器不支持 MCP Provider 时，日志改为给出可执行的指引而不是一句「不支持」
+
+### 变更
+
+- README 更正：删去「CodeBuddy 与 VS Code 同源内核、会自动出现」这一**错误结论**，
+  改为明确的客户端接入对照表。
+
+### 说明
+
+- CodeBuddy 中的用户级配置需要包含访问令牌（`GITEA_TOKEN`）才能工作；
+  该令牌由扩展从 `SecretStorage` 读取后写入，或沿用配置中已有的令牌。
+
 ## [0.1.4] - 2026-09-17
 
 ### 新增

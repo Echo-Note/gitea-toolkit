@@ -1,12 +1,19 @@
 /**
  * MCP 接入类命令：复制配置片段 / 写入配置文件。
  *
- * 面向 CodeBuddy 等通过 `mcp.json` 声明式配置 MCP Server 的客户端；
- * 若客户端支持 MCP Provider 动态发现（VS Code / 新版 CodeBuddy），则无需落盘。
+ * 三条路径的取舍：
+ *   - VS Code：支持 `mcpServerDefinitionProviders` 动态发现，无需落盘（已在 mcpProvider 中注册）
+ *   - CodeBuddy：**不消费**该贡献点，MCP 面板完全由用户级 `~/.codebuddy/mcp.json` 驱动，
+ *     必须写入该文件（`gitea.writeCodeBuddyUserMcpConfig`）才会出现
+ *   - 其它客户端：复制片段手动粘贴，或写入工作区级配置文件
  */
 import * as vscode from 'vscode';
 import { candidateConfigPaths } from '../../ai/mcpConfig';
-import { buildCurrentMcpConfig, writeMcpConfig } from '../mcpConfigWriter';
+import {
+  buildCurrentMcpConfig,
+  writeCodeBuddyUserMcpConfig,
+  writeMcpConfig,
+} from '../mcpConfigWriter';
 import { logError } from '../logger';
 import type { CommandDeps, CommandMap } from './types';
 
@@ -24,11 +31,31 @@ export function createMcpCommands(deps: CommandDeps): CommandMap {
       const config = await buildCurrentMcpConfig(context, service);
       await vscode.env.clipboard.writeText(JSON.stringify(config, null, 2));
       const action = await vscode.window.showInformationMessage(
-        '已复制 Gitea MCP 配置。粘贴到 CodeBuddy 的「MCP → Add MCP」配置文件中即可。',
+        '已复制 Gitea MCP 配置。粘贴到 MCP 客户端的「Add MCP」配置文件中即可。',
+        '写入 CodeBuddy 配置',
         '写入工作区配置文件',
       );
-      if (action === '写入工作区配置文件') {
+      if (action === '写入 CodeBuddy 配置') {
+        await vscode.commands.executeCommand('gitea.writeCodeBuddyUserMcpConfig');
+      } else if (action === '写入工作区配置文件') {
         await vscode.commands.executeCommand('gitea.writeMcpConfig');
+      }
+    },
+
+    /** 写入 CodeBuddy 用户级 MCP 配置（`~/.codebuddy/mcp.json`）。 */
+    'gitea.writeCodeBuddyUserMcpConfig': async () => {
+      try {
+        const filePath = await writeCodeBuddyUserMcpConfig(context, service);
+        const action = await vscode.window.showInformationMessage(
+          `已写入 CodeBuddy 用户级 MCP 配置：${filePath}\n请在 CodeBuddy 的 MCP 面板刷新（或重启编辑器），会出现名为 gitea 的服务。`,
+          '打开文件',
+        );
+        if (action === '打开文件') {
+          await vscode.window.showTextDocument(vscode.Uri.file(filePath));
+        }
+      } catch (error) {
+        logError('写入 CodeBuddy MCP 配置失败', error);
+        void vscode.window.showErrorMessage(`写入 CodeBuddy MCP 配置失败：${(error as Error).message}`);
       }
     },
 
@@ -44,7 +71,7 @@ export function createMcpCommands(deps: CommandDeps): CommandMap {
         candidateConfigPaths().map((relative) => ({
           label: relative,
           description: relative.startsWith('.codebuddy')
-            ? 'CodeBuddy 项目级配置（推荐）'
+            ? 'CodeBuddy 项目级配置'
             : relative.startsWith('.vscode')
               ? 'VS Code 工作区配置'
               : '通用 MCP 配置',

@@ -119,7 +119,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | Issue / PR | `Gitea: 新建 Issue`、`Gitea: 打开 Issue 详情面板`、`Gitea: 回复 Issue / Pull Request`、`Gitea: 在详情面板中回复`、`Gitea: 关闭 / 重新打开` |
 | Pull Request | `Gitea: 新建 Pull Request`、`Gitea: 打开 Pull Request 详情面板`、`Gitea: 查看 Pull Request 差异`、`Gitea: 合并 Pull Request`、`Gitea: 检出 Pull Request 分支` |
 | 通知 | `Gitea: 标记通知为已读`、`Gitea: 全部标记通知为已读` |
-| AI 接入 | `Gitea: 复制 MCP 配置到剪贴板`、`Gitea: 写入 MCP 配置文件` |
+| AI 接入 | `Gitea: 复制 MCP 配置到剪贴板`、`Gitea: 写入 CodeBuddy MCP 配置`、`Gitea: 写入 MCP 配置文件（工作区）` |
 
 点击 `Gitea` 状态栏条目可打开快捷菜单。
 
@@ -127,9 +127,31 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 
 ## 四、在 CodeBuddy 中使用
 
-### 方式 A：自动发现（推荐）
+先说结论——**不同客户端接入方式不同**：
 
-扩展实现了 VS Code 的 MCP 扩展点：
+| 客户端 | 接入方式 |
+| --- | --- |
+| **CodeBuddy** | **不消费** VS Code 的 MCP 贡献点，必须把配置落盘到用户级 `~/.codebuddy/mcp.json` |
+| **VS Code** | 支持 MCP Definition Provider，扩展激活后自动出现在 MCP 面板 |
+| 其它 MCP 客户端 | 复制配置片段手动粘贴 |
+
+> 这一点实测确认过：CodeBuddy 的 MCP 面板完全由 `~/.codebuddy/mcp.json` 驱动。
+> 即使扩展已经在 `package.json` 声明 `contributes.mcpServerDefinitionProviders`
+> 并成功调用了 `vscode.lm.registerMcpServerDefinitionProvider`，面板里**依然不会出现**该服务。
+
+### CodeBuddy：一条命令接入
+
+命令 **`Gitea: 写入 CodeBuddy MCP 配置`** 会把 `mcpServers.gitea` **合并**写入用户级配置
+（优先写已存在的 `~/.codebuddy/mcp.json`，不动其它 server）。随后在 CodeBuddy 的
+MCP 面板刷新（或重启编辑器），即可看到名为 `gitea` 的服务。
+
+**升级后不用手工改路径**：扩展安装目录名含版本号，升级后旧路径会失效、表现为该服务启动失败。
+扩展每次激活都会检查用户级配置里指向本扩展的脚本路径，发现过期就静默改写
+（仅在该文件已存在、且其中确有本扩展的条目时才动，不会凭空创建配置）。
+
+### VS Code：自动发现
+
+VS Code 支持 VS Code 的 MCP 扩展点，扩展注册后无需落盘：
 
 ```jsonc
 // package.json
@@ -139,11 +161,10 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 ```
 
 ```ts
-// 运行时注册，CodeBuddy / VS Code 会自动发现并加载工具
+// 运行时注册，VS Code 会自动发现并加载工具
 vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit.mcp', { ... });
 ```
 
-CodeBuddy 与 VS Code 同源内核，因此在 **MCP 面板中会直接出现 `Gitea Toolkit`**，无需手写配置。
 访问令牌在「服务器即将启动」回调中才注入，不会长期停留在配置对象里。
 
 同时，扩展还会注册 **27 个语言模型工具**（`giteaToolkit.gitea_*`），
@@ -161,13 +182,15 @@ CodeBuddy 与 VS Code 同源内核，因此在 **MCP 面板中会直接出现 `G
 `gitea_review_pull`、`gitea_commit_file` 等在 VS Code 语言模型工具路径下会先弹出确认卡片，
 展示完整入参，避免 AI 误改线上数据。
 
-### 方式 B：配置文件（旧版客户端兜底）
+### 工作区级配置（可选）
 
-命令 **`Gitea: 写入 MCP 配置文件`** 会把配置写入（可选）：
+命令 **`Gitea: 写入 MCP 配置文件（工作区）`** 会把配置写进当前工作区，可选：
 
-- `.codebuddy/mcp.json` ← CodeBuddy 项目级配置（推荐）
+- `.codebuddy/mcp.json` ← CodeBuddy 项目级配置
 - `.vscode/mcp.json`
 - `.mcp.json`
+
+适合「这个仓库用这套 Gitea 配置」的场景；只想全局生效就用上面的用户级命令。
 
 写入采用**合并**语义，只覆盖 `mcpServers.gitea`，不会破坏你已有的其他 MCP 配置。
 也可以 **`Gitea: 复制 MCP 配置到剪贴板`** 后粘贴到 CodeBuddy 的「MCP → Add MCP」面板。

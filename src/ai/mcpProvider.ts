@@ -45,7 +45,12 @@ export function registerMcpServerProvider(context: vscode.ExtensionContext, serv
   ).registerMcpServerDefinitionProvider;
 
   if (typeof registrar !== 'function' || typeof vscode.McpStdioServerDefinition !== 'function') {
-    logWarn('当前编辑器不支持 MCP Server Definition Provider，请改用「Gitea: 复制 MCP 配置」手工接入');
+    // CodeBuddy 属于这一类：它的 MCP 面板由用户级 ~/.codebuddy/mcp.json 驱动，
+    // 不消费本贡献点，必须落盘才能被发现。
+    logWarn(
+      '当前编辑器不支持 MCP Server Definition Provider（CodeBuddy 即属此类）。' +
+        '请执行「Gitea: 写入 CodeBuddy MCP 配置」完成接入，或用「Gitea: 复制 MCP 配置」手工粘贴。',
+    );
     return;
   }
 

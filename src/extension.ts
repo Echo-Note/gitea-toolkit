@@ -15,7 +15,7 @@ import { readSettings } from './vscode/config';
 import { createCommands, registerCommands } from './vscode/commands/index';
 import { verifyCompatibility } from './vscode/compatibility';
 import { logError, logInfo, logWarn, disposeLog } from './vscode/logger';
-import { autoWriteCodeBuddyConfig } from './vscode/mcpConfigWriter';
+import { autoWriteCodeBuddyConfig, repairCodeBuddyUserMcpConfig } from './vscode/mcpConfigWriter';
 import { GiteaService } from './vscode/service';
 import { StatusBarController } from './vscode/statusBar';
 import { IssuesProvider } from './vscode/views/issuesProvider';
@@ -55,6 +55,12 @@ export function activate(context: vscode.ExtensionContext): void {
   if (readSettings().writeCodeBuddyConfigOnActivate) {
     void autoWriteCodeBuddyConfig(context, service);
   }
+
+  // 扩展安装目录含版本号，升级后用户级 MCP 配置里的脚本路径会失效（表现为 CodeBuddy 里启动失败）。
+  // 这里静默纠正：仅在「该配置已存在且确实有我们的条目」时才改写，不会凭空创建。
+  void repairCodeBuddyUserMcpConfig(context, service).catch((error) => {
+    logWarn('修复 CodeBuddy 用户级 MCP 配置失败', error);
+  });
 
   // 后台核对服务端版本：仅在版本与上次告警的不同时弹窗，因此不会反复打扰
   void checkCompatibilityOnActivate(context, service);
