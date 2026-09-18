@@ -11,12 +11,10 @@
  */
 import * as vscode from 'vscode';
 import { describeError } from '../core/errors';
+import { LANGUAGE_MODEL_TOOL_PREFIX } from './ids';
 import { TOOL_CATALOG, type GiteaToolDefinition, type GiteaToolContext } from './tools/index';
 import { logError, logInfo, logWarn } from '../vscode/logger';
 import type { GiteaService } from '../vscode/service';
-
-/** 工具名前缀，与清单生成逻辑保持一致。 */
-export const TOOL_NAME_PREFIX = 'giteaToolkit.';
 
 /**
  * 注册全部语言模型工具。
@@ -30,7 +28,8 @@ export function registerLanguageModelTools(context: vscode.ExtensionContext, ser
   }
 
   for (const tool of TOOL_CATALOG) {
-    const fullName = `${TOOL_NAME_PREFIX}${tool.name}`;
+    // 前缀取自 tools 模块的唯一定义处，避免与 package.json 清单生成逻辑各写一份而漂移
+    const fullName = `${LANGUAGE_MODEL_TOOL_PREFIX}${tool.name}`;
     const registration = vscode.lm.registerTool<Record<string, unknown>>(fullName, {
       invoke: async (options) => invokeTool(tool, options.input ?? {}, service),
       prepareInvocation: async (options) => prepareInvocation(tool, options.input ?? {}),

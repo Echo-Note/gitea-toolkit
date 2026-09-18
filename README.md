@@ -210,13 +210,13 @@ VS Code 支持 MCP Definition Provider，扩展注册后无需落盘：
 ```jsonc
 // package.json
 "contributes": {
-  "mcpServerDefinitionProviders": [{ "id": "giteaToolkit.mcp", "label": "Gitea Toolkit (MCP)" }]
+  "mcpServerDefinitionProviders": [{ "id": "giteaToolkit_mcp", "label": "Gitea Toolkit (MCP)" }]
 }
 ```
 
 ```ts
 // 运行时注册，VS Code 会自动发现并加载工具
-vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit.mcp', { ... });
+vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit_mcp', { ... });
 ```
 
 访问令牌在「服务器即将启动」回调中才注入，不会长期停留在配置对象里。
@@ -283,7 +283,7 @@ npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 
 ### 语言模型工具
 
-扩展注册 **27 个语言模型工具**（`giteaToolkit.gitea_*`），
+扩展注册 **27 个语言模型工具**（`giteaToolkit_gitea_*`），
 在 Craft / Agent 模式下输入任务即可被自动调用，例如：
 
 > 帮我在 team/demo 建一个 Issue：登录接口在弱网下超时，标签 bug，指派给 lisi

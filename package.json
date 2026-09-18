@@ -2,7 +2,7 @@
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
   "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "echo-note",
   "license": "MIT",
   "repository": {
@@ -401,13 +401,13 @@
     },
     "mcpServerDefinitionProviders": [
       {
-        "id": "giteaToolkit.mcp",
+        "id": "giteaToolkit_mcp",
         "label": "Gitea Toolkit (MCP)"
       }
     ],
     "languageModelTools": [
       {
-        "name": "giteaToolkit.gitea_list_repos",
+        "name": "giteaToolkit_gitea_list_repos",
         "displayName": "列出仓库",
         "modelDescription": "列出当前令牌可见的 Gitea 仓库，支持按组织过滤或关键词搜索。返回仓库全名、默认分支、未关闭 Issue / PR 数量与最后更新时间。",
         "userDescription": "列出 Gitea 仓库",
@@ -444,7 +444,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_get_repo",
+        "name": "giteaToolkit_gitea_get_repo",
         "displayName": "获取仓库详情",
         "modelDescription": "获取指定 Gitea 仓库的详细信息，包括默认分支、权限、是否为空仓库、克隆地址等。",
         "userDescription": "查看仓库详情",
@@ -471,7 +471,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_create_repo",
+        "name": "giteaToolkit_gitea_create_repo",
         "displayName": "创建仓库",
         "modelDescription": "在 Gitea 上创建新仓库。可通过 `owner` 指定组织；不指定时创建到当前令牌所属用户名下。默认会自动初始化 README。",
         "userDescription": "创建 Gitea 仓库",
@@ -518,7 +518,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_branches",
+        "name": "giteaToolkit_gitea_list_branches",
         "displayName": "列出分支",
         "modelDescription": "列出仓库的所有分支及其最新提交 SHA。",
         "userDescription": "列出仓库分支",
@@ -551,7 +551,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_create_branch",
+        "name": "giteaToolkit_gitea_create_branch",
         "displayName": "创建分支",
         "modelDescription": "基于已有分支 / 标签 / 提交创建新分支。",
         "userDescription": "创建分支",
@@ -590,7 +590,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_commits",
+        "name": "giteaToolkit_gitea_list_commits",
         "displayName": "列出提交",
         "modelDescription": "列出仓库某个分支 / 路径上的提交历史。",
         "userDescription": "查看提交历史",
@@ -631,7 +631,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_files",
+        "name": "giteaToolkit_gitea_list_files",
         "displayName": "列出目录",
         "modelDescription": "列出仓库中某个目录下的文件与子目录。",
         "userDescription": "浏览仓库目录",
@@ -666,7 +666,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_get_file",
+        "name": "giteaToolkit_gitea_get_file",
         "displayName": "读取文件",
         "modelDescription": "读取仓库中指定文件的文本内容（自动 base64 解码），同时返回文件 blob SHA，便于后续更新。",
         "userDescription": "读取仓库文件",
@@ -705,7 +705,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_get_commit_status",
+        "name": "giteaToolkit_gitea_get_commit_status",
         "displayName": "查询提交状态",
         "modelDescription": "查询某个分支 / 标签 / 提交的 CI 合并状态（Gitea Actions 等）。返回 overall 状态与每个检查项的明细，可用于判断 PR 是否通过检查。",
         "userDescription": "查询提交 CI 状态",
@@ -740,7 +740,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_commit_file",
+        "name": "giteaToolkit_gitea_commit_file",
         "displayName": "提交文件",
         "modelDescription": "在仓库中创建或更新一个文件并提交。文件已存在时自动带上 blob SHA 执行更新。可通过 `newBranch` 把改动提交到新分支。",
         "userDescription": "创建或更新仓库文件",
@@ -792,7 +792,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_issues",
+        "name": "giteaToolkit_gitea_list_issues",
         "displayName": "列出 Issue",
         "modelDescription": "列出 Issue。可限定到具体仓库，也可跨仓库检索（用于「分配给我的 Issue」「我创建的 Issue」「提及我的 Issue」等场景）。",
         "userDescription": "列出 Gitea Issue",
@@ -854,7 +854,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_get_issue",
+        "name": "giteaToolkit_gitea_get_issue",
         "displayName": "获取 Issue 详情",
         "modelDescription": "获取单个 Issue 的完整信息，包含正文、标签、指派人与链接。",
         "userDescription": "查看 Issue 详情",
@@ -889,7 +889,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_create_issue",
+        "name": "giteaToolkit_gitea_create_issue",
         "displayName": "创建 Issue",
         "modelDescription": "在仓库中创建 Issue。`labels` 传标签名称（区分大小写不敏感），会自动解析为标签 ID；无法识别的标签会被忽略并在返回结果中说明。",
         "userDescription": "创建 Gitea Issue",
@@ -942,7 +942,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_update_issue",
+        "name": "giteaToolkit_gitea_update_issue",
         "displayName": "更新 Issue",
         "modelDescription": "更新 Issue 的标题、正文、状态（关闭 / 重新打开）、指派人与标签。",
         "userDescription": "修改 Gitea Issue",
@@ -1007,7 +1007,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_comment_issue",
+        "name": "giteaToolkit_gitea_comment_issue",
         "displayName": "评论 Issue",
         "modelDescription": "在 Issue（或 PR 的对话区）中发表评论。",
         "userDescription": "评论 Gitea Issue",
@@ -1048,7 +1048,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_issue_comments",
+        "name": "giteaToolkit_gitea_list_issue_comments",
         "displayName": "列出 Issue 评论",
         "modelDescription": "列出 Issue 的时间线评论，用于了解讨论上下文。",
         "userDescription": "查看 Issue 评论",
@@ -1089,7 +1089,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_pulls",
+        "name": "giteaToolkit_gitea_list_pulls",
         "displayName": "列出 Pull Request",
         "modelDescription": "列出仓库的 Pull Request，支持按状态、分支与排序过滤。",
         "userDescription": "列出 Gitea Pull Request",
@@ -1151,7 +1151,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_get_pull",
+        "name": "giteaToolkit_gitea_get_pull",
         "displayName": "获取 PR 详情",
         "modelDescription": "获取单个 Pull Request 的详情，包含可合并状态、变更规模、评审人等信息。",
         "userDescription": "查看 Pull Request 详情",
@@ -1186,7 +1186,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_get_pull_diff",
+        "name": "giteaToolkit_gitea_get_pull_diff",
         "displayName": "查看 PR 差异",
         "modelDescription": "获取 Pull Request 的 unified diff 文本，用于代码评审。内容较长时会被截断，可配合 `gitea_list_pull_files` 先锁定关注文件。",
         "userDescription": "查看 Pull Request 代码差异",
@@ -1235,7 +1235,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_pull_files",
+        "name": "giteaToolkit_gitea_list_pull_files",
         "displayName": "列出 PR 变更文件",
         "modelDescription": "列出 Pull Request 涉及的文件及每个文件的新增 / 删除行数，便于快速定位评审重点。",
         "userDescription": "列出 Pull Request 变更文件",
@@ -1270,7 +1270,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_create_pull",
+        "name": "giteaToolkit_gitea_create_pull",
         "displayName": "创建 Pull Request",
         "modelDescription": "创建 Pull Request。head 与 base 均为分支名，head 可写成 `owner:branch` 形式以支持跨仓库 PR。",
         "userDescription": "创建 Pull Request",
@@ -1335,7 +1335,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_merge_pull",
+        "name": "giteaToolkit_gitea_merge_pull",
         "displayName": "合并 Pull Request",
         "modelDescription": "合并 Pull Request，支持选择合并策略并可在合并后删除源分支。",
         "userDescription": "合并 Pull Request",
@@ -1393,7 +1393,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_review_pull",
+        "name": "giteaToolkit_gitea_review_pull",
         "displayName": "评审 Pull Request",
         "modelDescription": "提交 PR 评审意见：批准（APPROVED）、请求修改（REQUEST_CHANGES）或仅评论（COMMENT）。",
         "userDescription": "评审 Pull Request",
@@ -1442,7 +1442,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_get_current_user",
+        "name": "giteaToolkit_gitea_get_current_user",
         "displayName": "获取当前用户",
         "modelDescription": "获取当前访问令牌对应的 Gitea 用户信息。也可用于校验令牌是否有效、实例是否可连通。",
         "userDescription": "查看当前 Gitea 用户",
@@ -1459,7 +1459,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_orgs",
+        "name": "giteaToolkit_gitea_list_orgs",
         "displayName": "列出组织",
         "modelDescription": "列出当前用户所属或可见的 Gitea 组织。",
         "userDescription": "列出 Gitea 组织",
@@ -1476,7 +1476,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_list_notifications",
+        "name": "giteaToolkit_gitea_list_notifications",
         "displayName": "列出通知",
         "modelDescription": "列出当前用户的 Gitea 通知线程，可按类型过滤。",
         "userDescription": "列出 Gitea 通知",
@@ -1518,7 +1518,7 @@
         }
       },
       {
-        "name": "giteaToolkit.gitea_mark_notifications_read",
+        "name": "giteaToolkit_gitea_mark_notifications_read",
         "displayName": "标记通知已读",
         "modelDescription": "把全部通知（或某个时间点之前的通知）标记为已读。",
         "userDescription": "标记 Gitea 通知为已读",

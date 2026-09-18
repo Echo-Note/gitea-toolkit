@@ -20,12 +20,16 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const packageJsonPath = path.join(projectRoot, 'package.json');
 const checkOnly = process.argv.includes('--check');
 
-/** 打包工具目录并加载，得到运行时模块。 */
-async function loadToolModule() {
+/**
+ * 打包并加载一个**不依赖 vscode** 的源码模块，拿到其运行时定义。
+ * @param {string} entry 相对项目根的入口路径
+ * @returns {Promise<Record<string, unknown>>} 模块导出
+ */
+async function loadModule(entry) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitea-toolkit-sync-'));
-  const outfile = path.join(tmpDir, 'tools.cjs');
+  const outfile = path.join(tmpDir, 'mod.cjs');
   await build({
-    entryPoints: [path.join(projectRoot, 'src/ai/tools/index.ts')],
+    entryPoints: [path.join(projectRoot, entry)],
     outfile,
     bundle: true,
     platform: 'node',
@@ -61,13 +65,61 @@ function validateCatalog(catalog) {
   return problems;
 }
 
+/**
+ * 校验生成的 `languageModelTools` 清单。
+ *
+ * **为什么必须校验 `name`**：VS Code 要求工具 ID 匹配 `/^[\w-]+$/`（**不允许点号**）。
+ * 一旦违规，扩展激活时 27 个工具会被逐个拒绝注册，报
+ * `CANNOT register tool with invalid id`；而 package.json 里的清单本身看起来完全正常，
+ * 本地类型检查与 Lint 也都发现不了 —— 2026-09-18 正是因此漏到线上。
+ * @param {Array<Record<string, unknown>>} manifest 清单
+ * @returns {string[]} 问题列表
+ */
+function validateManifest(manifest, prefix) {
+  const problems = [];
+  const seen = new Set();
+  for (const entry of manifest) {
+    const name = entry.name;
+    if (typeof name !== 'string' || !/^[\w-]+$/.test(name)) {
+      problems.push(`name 不符合 /^[\\w-]+$/（不能含点号等字符）：${name}`);
+    } else if (!name.startsWith(prefix)) {
+      problems.push(`name 未使用约定前缀「${prefix}」：${name}`);
+    }
+    if (seen.has(name)) {
+      problems.push(`name 重复：${name}`);
+    }
+    seen.add(name);
+  }
+  return problems;
+}
+
+/**
+ * 校验 package.json 里的 MCP Provider ID 与代码常量一致。
+ *
+ * 同样是一次「同一常量写两处」的防漂移检查：id 必须与 `registerMcpServerDefinitionProvider`
+ * 传入的一致，否则提供者会静默失效（清单里声明了、但注册永远匹配不上）。
+ * @param {Record<string, unknown>} pkg package.json 内容
+ * @param {string} expected 代码中的期望值
+ * @returns {string[]} 问题列表
+ */
+function validateMcpProviderId(pkg, expected) {
+  const declared = pkg.contributes?.mcpServerDefinitionProviders ?? [];
+  if (declared.length === 0) {
+    return ['package.json 缺少 contributes.mcpServerDefinitionProviders'];
+  }
+  return declared
+    .filter((entry) => entry.id !== expected)
+    .map((entry) => `mcpServerDefinitionProviders 的 id 与代码不一致：清单「${entry.id}」/ 代码「${expected}」`);
+}
+
 /** 稳定序列化，便于比较。 */
 function stableJson(value) {
   return JSON.stringify(value, null, 2);
 }
 
 async function main() {
-  const tools = await loadToolModule();
+  const tools = await loadModule('src/ai/tools/index.ts');
+  const ids = await loadModule('src/ai/ids.ts');
   const catalog = tools.TOOL_CATALOG;
   const problems = validateCatalog(catalog);
   if (problems.length > 0) {
@@ -78,8 +130,22 @@ async function main() {
     process.exit(1);
   }
 
-  const manifest = tools.buildLanguageModelToolManifest();
   const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+
+  // 两类「清单 ↔ 代码」标识符的防漂移校验，都在此拦下
+  const manifest = tools.buildLanguageModelToolManifest();
+  const manifestProblems = [
+    ...validateManifest(manifest, ids.LANGUAGE_MODEL_TOOL_PREFIX),
+    ...validateMcpProviderId(pkg, ids.MCP_PROVIDER_ID),
+  ];
+  if (manifestProblems.length > 0) {
+    console.error('[sync-tools] 清单校验失败：');
+    for (const problem of manifestProblems) {
+      console.error(`  - ${problem}`);
+    }
+    process.exit(1);
+  }
+
   pkg.contributes = pkg.contributes ?? {};
   const current = pkg.contributes.languageModelTools ?? [];
 

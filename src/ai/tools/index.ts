@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { LANGUAGE_MODEL_TOOL_PREFIX } from '../ids';
 import { accountTools } from './accountTools';
 import { issueTools } from './issueTools';
 import { pullTools } from './pullTools';
@@ -45,7 +46,7 @@ export function findTool(name: string): GiteaToolDefinition | undefined {
  */
 export function buildLanguageModelToolManifest(): Array<Record<string, unknown>> {
   return TOOL_CATALOG.map((tool) => ({
-    name: `giteaToolkit.${tool.name}`,
+    name: `${LANGUAGE_MODEL_TOOL_PREFIX}${tool.name}`,
     displayName: tool.displayName,
     modelDescription: tool.description,
     userDescription: tool.userDescription,

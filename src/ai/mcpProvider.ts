@@ -11,13 +11,13 @@
  *   - 老版本编辑器若缺少该 API，则静默跳过，由「复制 / 写入 MCP 配置」命令兜底
  */
 import * as vscode from 'vscode';
+import { MCP_PROVIDER_ID } from './ids';
 import { MCP_ENV, resolveMcpServerScript, resolveNodeLaunch } from './mcpConfig';
 import { readSettings } from '../vscode/config';
 import { logInfo, logWarn } from '../vscode/logger';
 import type { GiteaService } from '../vscode/service';
 
-/** MCP Provider ID，必须与 package.json 中 `contributes.mcpServerDefinitionProviders[].id` 一致。 */
-export const MCP_PROVIDER_ID = 'giteaToolkit.mcp';
+export { MCP_PROVIDER_ID };
 
 /** MCP Server 在编辑器 UI 中显示的名称。 */
 export const MCP_SERVER_LABEL = 'Gitea Toolkit';

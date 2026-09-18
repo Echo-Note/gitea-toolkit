@@ -2,6 +2,44 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.3.3] - 2026-09-18
+
+### 修复
+
+- **27 个语言模型工具全部注册失败。** VS Code 报：
+
+  ```
+  CANNOT register tool with invalid id: giteaToolkit.gitea_list_repos.
+  The id must match /^[\w-]+$/
+  ```
+
+  原因：`vscode.lm.registerTool` 的 ID 与 `contributes.languageModelTools[].name`
+  都不允许点号，而我们的前缀写的是 `giteaToolkit.`。
+  改为 `giteaToolkit_`，工具 ID 形如 `giteaToolkit_gitea_list_repos`
+  （`toolReferenceName` 仍是 `gitea_list_repos`，用户 `#` 引用方式不变）。
+
+  这个 bug 之所以能一直藏到线上：前缀在 `ai/lmTools.ts` 与 `ai/tools/index.ts` 里**各写了一遍**，
+  靠注释约定同步；而 `sync-tools.mjs` 会校验工具名却**没校验这个 ID**，
+  于是 package.json、类型检查、Lint 三处都发现不了。
+
+### 工程
+
+- 新增 `src/ai/ids.ts`，把两类标识符收敛为**单一定义**（该模块不依赖 vscode，
+  因此构建脚本能直接加载并与 package.json 比对）。
+- `scripts/sync-tools.mjs` 增加两类防漂移校验：
+  - 每个 `languageModelTools[].name` 必须匹配 `/^[\w-]+$/` 且使用约定前缀
+  - `mcpServerDefinitionProviders[].id` 必须与代码常量一致
+
+  两者都已用「故意改坏 → 确认校验失败 → 还原」反向验证过，不是加了就算。
+- `MCP_PROVIDER_ID` 由 `giteaToolkit.mcp` 改为 `giteaToolkit_mcp`。官方文档示例用的是
+  `exampleProvider` 这种裸标识符，未示范点分格式，也未公开字符集规则 ——
+  既然该路径从未在真实 VS Code 上验证过，不做未经证实的假设。
+
+### 说明
+
+- README 中示例的 ID 写法已同步更新。
+
+
 ## [0.3.2] - 2026-09-18
 
 ### 修复
