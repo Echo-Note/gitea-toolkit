@@ -2,7 +2,7 @@
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
   "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "echo-note",
   "license": "MIT",
   "repository": {

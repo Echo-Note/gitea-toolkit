@@ -49,18 +49,22 @@ shasum -a 256 -c SHA256SUMS
 
 ### 更新扩展
 
-本扩展经 GitHub Releases 分发，**未发布到 Marketplace，编辑器不会自动更新**，因此内置了更新检查：
+本扩展已上架 **Open VSX**（CodeBuddy 的扩展源），**编辑器会自动更新**，无需手动操作。
 
-- 激活后每天自动检查一次（`gitea.checkUpdates`，默认开启），发现新版本时提示
-- 也可随时手动执行 **`Gitea: 检查更新`**
+对于**手动装 `.vsix`** 的用户（不经市场），扩展内置了更新检查兜底：
+
+- 随时可执行 **`Gitea: 检查更新`**，比对 GitHub Releases 的最新版本
 - 提示里可直接跳到 `.vsix` 下载，下载后建议按「安装」一节核对 `SHA256SUMS`
+- `gitea.checkUpdates` 控制的是**自动**检查。因为已上架市场、编辑器会自动更新，
+  自动检查默认**已关闭**（见 `src/vscode/updateChecker.ts` 的 `UPDATE_CHANNEL`），
+  以免两条通道给出互相矛盾的提示
 
 > **别混淆这两个命令**：
 > `Gitea: 检查更新` 查的是**扩展自身**的版本；
 > `Gitea: 检查版本兼容性` 查的是**服务端 Gitea** 的版本与本扩展已核对版本的差异。
 
-自动检查的节流策略：每天最多请求一次 GitHub，且**只在请求成功后才记录时间**（网络抖动不会白等一天）；
-同一个新版本只提示一次；任何失败都只写日志、不打扰用户。
+自动检查的节流策略（若启用）：每天最多请求一次 GitHub，且**只在请求成功后才记录时间**
+（网络抖动不会白等一天）；同一个新版本只提示一次；任何失败都只写日志、不打扰用户。
 
 ### 版本兼容性校验
 
@@ -329,7 +333,7 @@ npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 | `gitea.enableMcpServer` | `true` | 是否启用内置 MCP Server |
 | `gitea.enableLanguageModelTools` | `true` | 是否注册语言模型工具 |
 | `gitea.writeCodeBuddyConfigOnActivate` | `false` | 激活时自动写入**工作区** `.codebuddy/mcp.json`（仅当文件不存在时） |
-| `gitea.checkUpdates` | `true` | 每天检查一次**扩展自身**的新版本 |
+| `gitea.checkUpdates` | `true` | 是否每天检查**扩展自身**的新版本（已上架市场时该自动检查会被整体跳过，见「更新扩展」） |
 
 > 另有 `gitea.ignoreCertificates`，是 `gitea.verifyTls` 的反向兼容别名（已标记废弃），
 > 仅为兼容旧配置保留，新配置请一律使用 `gitea.verifyTls`。
@@ -488,12 +492,16 @@ npx ovsx create-namespace echo-note -p <TOKEN>
    发布也接进 CI，应直接用 Entra ID 工作负载身份联合：`vsce publish --azure-credential`
    （需 vsce ≥ 2.26.1）。Open VSX 的 token 没有这个问题。
 
-#### 上架后必须改一处代码
+#### 上架后要改一处代码（已完成）
 
-把 `src/vscode/updateChecker.ts` 里的 `UPDATE_CHANNEL` 改成 `'marketplace'`。
+`src/vscode/updateChecker.ts` 里的 `UPDATE_CHANNEL`：`'github'` → `'marketplace'`。
 
-否则会同时存在两条更新通道：编辑器已经从市场自动更新，扩展又提示「去 GitHub 下载 .vsix」。
-当 CI 每次版本递增都发 Release、而市场是手动发布时，GitHub 会持续领先，用户会被反复引导绕开市场。
+不改的话会同时存在两条更新通道：编辑器已经从市场自动更新，扩展又提示「去 GitHub 下载 .vsix」。
+当 CI 每次版本递增都发 Release、而市场是手动发布时，GitHub 会持续领先，用户被反复引导绕开市场。
+
+> 2026-09-18 已改为 `'marketplace'`（`echo-note.gitea-toolkit` 在 Open VSX 上架后）。
+> 若将来新增分发通道（例如 MS Marketplace），这个值本身就是「是否由编辑器自动更新」的开关，
+> 不需要再改别的。
 
 > 继续发 GitHub Releases 仍有价值（离线安装、`SHA256SUMS` 校验、变更记录），
 > 只要保证各通道版本号一致即可。

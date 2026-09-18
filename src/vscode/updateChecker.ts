@@ -18,18 +18,21 @@ import { buildUserAgent, readSettings } from './config';
 import { logInfo, logWarn } from './logger';
 
 /**
- * 分发渠道。**上架 Marketplace 前必须改这里。**
+ * 分发渠道。
  *
  * - `'github'`：仅经 GitHub Releases 分发。编辑器不会自动更新，故启用内置更新检查。
- * - `'marketplace'`：已上架 Marketplace，**编辑器会自动更新**。
- *   此时关闭自动检查 —— 否则若 GitHub Releases 领先于 Marketplace（CI 每次版本递增都发 Release，
- *   而 Marketplace 发布通常是手动的），用户会被反复提示「去 GitHub 下载 .vsix」，
- *   绕过 Marketplace，两条通道互相打架。
+ * - `'marketplace'`：已上架扩展市场（当前为 Open VSX，CodeBuddy 的扩展源），
+ *   **编辑器会自动更新**。此时关闭自动检查 —— 否则若 GitHub Releases 领先于市场
+ *   （CI 每次版本递增都发 Release，而市场发布也可能是手动的），用户会被反复提示
+ *   「去 GitHub 下载 .vsix」，绕过市场，两条通道互相打架。
  *
  * 之所以用编译期常量而不是运行时探测：VS Code 没有公开 API 能判断扩展的安装来源，
- * 三种安装方式（Marketplace / VSIX / 开发）落在同一个 `extensions/` 目录下，无法区分。
+ * 三种安装方式（市场 / VSIX / 开发）落在同一个 `extensions/` 目录下，无法区分。
+ *
+ * 2026-09-18 改为 `'marketplace'`：`echo-note.gitea-toolkit` 已在 Open VSX 上架。
+ * 手动检查（`Gitea: 检查更新`）不受影响，仍可用，只是结果里会注明比对的是 GitHub Releases。
  */
-export const UPDATE_CHANNEL: 'github' | 'marketplace' = 'github';
+export const UPDATE_CHANNEL: 'github' | 'marketplace' = 'marketplace';
 
 /** globalState 键：上次成功检查的时间戳。 */
 const LAST_CHECK_KEY = 'gitea.update.lastCheckAt';

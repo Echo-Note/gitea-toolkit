@@ -2,6 +2,23 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.3.1] - 2026-09-18
+
+### 变更
+
+- **`UPDATE_CHANNEL` 由 `'github'` 改为 `'marketplace'`**。扩展已在 Open VSX 上架，
+  CodeBuddy 等客户端会自动更新，此时内置的自动更新检查只会造成两条通道互相矛盾的提示
+  （编辑器已静默更新，扩展还提示「去 GitHub 下载 .vsix」）。
+  手动执行 `Gitea: 检查更新` 不受影响，仍可用，结果里会注明比对的是 GitHub Releases 的版本。
+- 文档同步：README 的「更新扩展」「配置项」两处原本写着「未发布到 Marketplace、编辑器不会自动更新」，
+  已按上架后的实际情况改写。
+
+### 说明
+
+- 本次也是 **CI 全自动发布链路的首次真实验证**。0.3.0 是手工用 `ovsx publish` 发的，
+  未经 CI；本次由 `release` job 自动发布到 Open VSX，同时产出 GitHub Release 与 `SHA256SUMS`。
+
+
 ## [0.3.0] - 2026-09-18
 
 ### 新增
