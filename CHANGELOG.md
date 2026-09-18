@@ -2,6 +2,33 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.9.1] - 2026-09-18
+
+### 修复
+
+- **`--help` 与 MCP 客户端配置示例里的包名漏了 scope。** 原先写的是 `gitea-toolkit-mcp`，
+  而 npm 包名是 **`@echo-note/gitea-toolkit-mcp`** —— `gitea-toolkit-mcp` 只是 `bin` 名。
+  这会把用户引向一个**非本项目的同名包**，而它恰好出现在用户会**直接复制**的两处：
+  `--help` 的输出、以及 Claude Desktop / Cursor 的配置片段。已全部修正。
+
+### 文档
+
+- **重写 `packages/mcp-server/README.md`** —— 它就是 **npm 包页面上显示的那一份**。
+  原先仍把 **GitHub Packages** 列为安装方式（0.9.0 已移除该通路与包级 `.npmrc`）、
+  版本锁定示例还写着 `v0.7.0`、而"零配置"被安在了 Release tarball 上。
+  现在明确分成两条：① 公共 npm（推荐，无需认证）② Release tarball（备选，访问不了
+  registry 时用），并保留「0.7.0–0.8.5 曾用 GitHub Packages、以及为何换掉」的说明。
+- 根 README 的「接入 AI 助手」一节：两个方案原先**都标着「推荐」**、且 tarball 排在 npm 前面 ——
+  已调换顺序并去掉重复段落。`NPM_TOKEN` 一行改为「不要配」（首次发布已完成，正式通道是 OIDC）。
+- CHANGELOG 0.3.0 的示例命令同样漏 scope，一并修正。
+
+- 补记一条**发布相关的事实**：0.9.0 的 npm 包是**手动发布**的（可信发布要求包已存在，
+  首次必须先创建），所以 CI 里那次 npm 步骤显示为跳过、而非发布成功；
+  从 0.9.0 起 `npx -y @echo-note/gitea-toolkit-mcp` 已可直接使用。
+
+> 为什么这些文档修正值得单独发一个版本：**npm 页面上的 README 与终端里的 `--help`
+> 都只随发布更新** —— 0.9.0 的包页与已下载的 tarball 里仍是上述过时内容。
+
 ## [0.9.0] - 2026-09-18
 
 ### 变更
