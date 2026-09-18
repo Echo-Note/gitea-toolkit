@@ -156,6 +156,14 @@ async function main() {
         row({ label: '打开的 Pull Request', spec: icons.groupIcons.pulls(), depth: 1 }),
         row({ label: '#42 修复登录超时', description: '草稿', spec: icons.pullIcon({ state: 'open', draft: true }), depth: 2 }),
         row({ label: '#40 补充单测', description: '@lisi', spec: icons.pullIcon({ state: 'open' }), depth: 2 }),
+        row({ label: 'Actions', spec: icons.actionIcons.runs(), depth: 1 }),
+        row({ label: '工作流', spec: icons.actionIcons.workflows(), depth: 2 }),
+        row({ label: 'CI', spec: icons.workflowIcon('active'), depth: 3 }),
+        row({ label: 'Deploy', description: '已停用', spec: icons.workflowIcon('disabled_manually'), depth: 3 }),
+        row({ label: '最近运行', spec: icons.actionIcons.runs(), depth: 2 }),
+        row({ label: '#37 修复登录超时', spec: icons.actionStateIcon('completed', 'failure'), depth: 3 }),
+        row({ label: 'build-main', spec: icons.actionStateIcon('completed', 'failure'), depth: 4 }),
+        row({ label: 'deploy-main', spec: icons.actionStateIcon('completed', 'skipped'), depth: 4 }),
         row({ label: 'archived-demo', description: 'example-org', spec: icons.repoIcon({ archived: true }), depth: 0 }),
         row({ label: 'gitea-fork', description: 'example-org', spec: icons.repoIcon({ fork: true }), depth: 0 }),
         row({ label: 'public-demo', description: 'example-org', spec: icons.repoIcon({ empty: true }), depth: 0 }),
@@ -206,6 +214,23 @@ async function main() {
       ],
     },
     {
+      title: 'Actions 状态全集',
+      body: [
+        row({ label: '成功', spec: icons.actionStateIcon('completed', 'success'), depth: 0 }),
+        row({ label: '失败', spec: icons.actionStateIcon('completed', 'failure'), depth: 0 }),
+        row({ label: '超时', spec: icons.actionStateIcon('completed', 'timed_out'), depth: 0 }),
+        row({ label: '已取消', spec: icons.actionStateIcon('completed', 'cancelled'), depth: 0 }),
+        row({ label: '已跳过', spec: icons.actionStateIcon('completed', 'skipped'), depth: 0 }),
+        row({ label: '运行中', spec: icons.actionStateIcon('in_progress', undefined), depth: 0 }),
+        row({ label: '排队中', spec: icons.actionStateIcon('queued', undefined), depth: 0 }),
+        row({ label: '状态未知', spec: icons.actionStateIcon(undefined, undefined), depth: 0 }),
+        row({ label: '工作流启用', spec: icons.workflowIcon('active'), depth: 0 }),
+        row({ label: '工作流停用', spec: icons.workflowIcon('disabled_manually'), depth: 0 }),
+        row({ label: '工作流分组', spec: icons.actionIcons.workflows(), depth: 0 }),
+        row({ label: '运行分组', spec: icons.actionIcons.runs(), depth: 0 }),
+      ],
+    },
+    {
       title: '空状态 / 错误提示',
       body: [
         row({ label: '未配置访问令牌，点击设置', spec: { id: icons.messageIcons.noToken }, depth: 0 }),
@@ -214,6 +239,8 @@ async function main() {
         row({ label: '没有打开的 Issue。', spec: { id: icons.messageIcons.noIssue }, depth: 0 }),
         row({ label: '没有打开的 Pull Request。', spec: { id: icons.messageIcons.noPull }, depth: 0 }),
         row({ label: '没有未读通知。', spec: { id: icons.messageIcons.noNotification }, depth: 0 }),
+        row({ label: '没有配置 Actions 工作流。', spec: { id: icons.messageIcons.noWorkflow }, depth: 0 }),
+        row({ label: '没有 Actions 运行记录。', spec: { id: icons.messageIcons.noRun }, depth: 0 }),
         row({ label: '请求失败（HTTP 401）', spec: { id: icons.messageIcons.error }, depth: 0 }),
         row({ label: '仅显示前若干条', spec: { id: icons.messageIcons.more }, depth: 0 }),
       ],
@@ -221,7 +248,23 @@ async function main() {
   ];
 
   // ---------- 校验图标名 ----------
-  const unknown = [...usedIconIds].filter((id) => !names.has(id)).sort();
+  //
+  // VS Code 允许在图标 ID 后追加 `~modifier`（如 `sync~spin`）来控制动画或镜像，
+  // 这些修饰符不是 codicon 名字，必须剥掉再查，否则会把合法图标误判为拼错。
+  // 已支持的修饰符见 ThemeIcon 文档：spin / spin-inverse / pulse。
+  const MODIFIERS = new Set(['spin', 'spin-inverse', 'pulse']);
+  const baseName = (id) => {
+    const index = id.indexOf('~');
+    if (index < 0) {
+      return id;
+    }
+    const modifier = id.slice(index + 1);
+    if (!MODIFIERS.has(modifier)) {
+      return `<非法修饰符 ${modifier}>`;
+    }
+    return id.slice(0, index);
+  };
+  const unknown = [...usedIconIds].filter((id) => !names.has(baseName(id))).sort();
   if (unknown.length > 0) {
     console.error('[preview-tree] 以下 codicon 名称不存在，运行时会被静默忽略：');
     for (const id of unknown) {

@@ -2,7 +2,7 @@
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
   "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "echo-note",
   "license": "MIT",
   "repository": {
@@ -242,6 +242,24 @@
         "title": "Gitea: 显示日志",
         "category": "Gitea",
         "icon": "$(output)"
+      },
+      {
+        "command": "gitea.showJobLogs",
+        "title": "Gitea: 查看作业日志",
+        "category": "Gitea",
+        "icon": "$(output)"
+      },
+      {
+        "command": "gitea.rerunAction",
+        "title": "Gitea: 重跑 Actions",
+        "category": "Gitea",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "gitea.triggerWorkflow",
+        "title": "Gitea: 触发工作流",
+        "category": "Gitea",
+        "icon": "$(play)"
       }
     ],
     "viewsContainers": {
@@ -314,8 +332,23 @@
       "view/item/context": [
         {
           "command": "gitea.openInBrowser",
-          "when": "viewItem =~ /^gitea\\.(repo|issue|pull|branch|notification)$/",
+          "when": "viewItem =~ /^gitea\\.(repo|issue|pull|branch|notification|actionWorkflow|actionRun|actionJob)$/",
           "group": "inline@1"
+        },
+        {
+          "command": "gitea.showJobLogs",
+          "when": "view == gitea.repos && viewItem == gitea.actionJob",
+          "group": "inline@1"
+        },
+        {
+          "command": "gitea.rerunAction",
+          "when": "view == gitea.repos && viewItem == gitea.actionRun",
+          "group": "1_run@1"
+        },
+        {
+          "command": "gitea.triggerWorkflow",
+          "when": "view == gitea.repos && viewItem == gitea.actionWorkflow",
+          "group": "1_workflow@1"
         },
         {
           "command": "gitea.cloneRepo",

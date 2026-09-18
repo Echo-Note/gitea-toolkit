@@ -150,6 +150,60 @@ export const pullGroupIcons = {
   all: (): IconSpec => icon('git-pull-request', COLOR.open),
 };
 
+/** Gitea Actions 相关分组图标。 */
+export const actionIcons = {
+  /** 工作流分组。 */
+  workflows: (): IconSpec => icon('symbol-event'),
+  /** 运行记录分组。 */
+  runs: (): IconSpec => icon('history'),
+};
+
+/**
+ * 工作流节点图标：启用为播放键，停用为禁止符。
+ * @param state 工作流状态（`active` 表示启用）
+ * @returns 图标描述
+ */
+export function workflowIcon(state: string): IconSpec {
+  return state === 'active' ? icon('play', COLOR.open) : icon('circle-slash', COLOR.warn);
+}
+
+/**
+ * Actions 运行 / 作业的状态图标。
+ *
+ * Gitea 把「进行中」放在 `status`、「最终结果」放在 `conclusion`，两者取其一即可判断，
+ * 因此这里合并处理（与 AI 工具侧的 `actionStateLabel` 保持同一套语义）。
+ *
+ * 进行中使用 `sync~spin`：`~spin` 是 VS Code 的动画修饰符，不是 codicon 名字，
+ * 校验脚本 `scripts/preview-tree.mjs` 会先剥离修饰符再比对字体。
+ * @param status 状态
+ * @param conclusion 结论
+ * @returns 图标描述
+ */
+export function actionStateIcon(status?: string, conclusion?: string): IconSpec {
+  const key = (conclusion ?? '').trim() || (status ?? '').trim();
+  switch (key) {
+    case 'success':
+      return icon('check', COLOR.open);
+    case 'failure':
+    case 'timed_out':
+    case 'action_required':
+      return icon('x', COLOR.danger);
+    case 'cancelled':
+      return icon('circle-slash', COLOR.closed);
+    case 'skipped':
+    case 'neutral':
+      return icon('circle-slash');
+    case 'running':
+    case 'in_progress':
+      return icon('sync~spin', COLOR.info);
+    case 'queued':
+    case 'waiting':
+      return icon('clock', COLOR.warn);
+    default:
+      return icon('circle-outline');
+  }
+}
+
 /** 提示 / 空状态节点使用的裸 codicon（无主题色）。 */
 export const messageIcons = {
   /** 未配置令牌。 */
@@ -164,6 +218,10 @@ export const messageIcons = {
   noPull: 'git-pull-request',
   /** 没有通知。 */
   noNotification: 'bell',
+  /** 没有 Actions 工作流。 */
+  noWorkflow: 'symbol-event',
+  /** 没有 Actions 运行记录。 */
+  noRun: 'history',
   /** 加载失败。 */
   error: 'error',
   /** 还有更多。 */

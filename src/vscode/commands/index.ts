@@ -3,6 +3,7 @@
  */
 import * as vscode from 'vscode';
 import { logError } from '../logger';
+import { createActionCommands } from './actionCommands';
 import { createAuthCommands } from './authCommands';
 import { createIssueCommands } from './issueCommands';
 import { createMcpCommands } from './mcpCommands';
@@ -30,6 +31,7 @@ export function createCommands(deps: CommandDeps): CommandMap {
     ...createNotificationCommands(deps),
     ...createMcpCommands(deps),
     ...createUpdateCommands(deps),
+    ...createActionCommands(deps),
   };
 }
 

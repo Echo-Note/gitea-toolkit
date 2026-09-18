@@ -1,4 +1,4 @@
-# gitea-toolkit-mcp
+# @echo-note/gitea-toolkit-mcp
 
 Gitea 的 [MCP](https://modelcontextprotocol.io/) 工具服务（stdio 传输）。
 **独立运行，不需要安装 VS Code 扩展**，任何 MCP 客户端都能接入。
@@ -10,17 +10,37 @@ Gitea 的 [MCP](https://modelcontextprotocol.io/) 工具服务（stdio 传输）
 - 创建 PR、查看 diff 与变更文件、批准 / 请求修改 / 合并、检出分支
 - 查询提交的 CI 合并状态
 - 读取与标记通知
+- 列出 Actions 工作流与运行记录、读取作业日志、触发 / 重跑工作流
+
+## 安装前提（重要）
+
+本包发布在 **GitHub Packages**，不是 npmjs.org。GitHub 的 npm 源**不接受匿名安装** ——
+官方文档明确写着发布、安装、删除**公开**包同样需要访问令牌。所以 `npx` 之前要先做一次性认证：
+
+```bash
+# 1. 建一个 classic PAT，勾选 read:packages
+#    https://github.com/settings/tokens
+# 2. 写进 ~/.npmrc
+cat >> ~/.npmrc <<'EOF'
+@echo-note:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=<你的 PAT>
+EOF
+```
+
+> 如果你的客户端不支持 `~/.npmrc`（例如某些沙箱环境），可以直接从
+> [Packages 页面](https://github.com/Echo-Note/gitea-toolkit/pkgs/npm/gitea-toolkit-mcp)
+> 下载 tarball 解压后指定本地入口。
 
 ## 快速开始
 
 ```bash
-npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <你的访问令牌>
+npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <你的访问令牌>
 ```
 
 不需要令牌就能先看看有什么工具：
 
 ```bash
-npx -y gitea-toolkit-mcp --help
+npx -y @echo-note/gitea-toolkit-mcp --help
 ```
 
 访问令牌在 Gitea 的 **「设置 → 应用 → 生成令牌」** 创建，勾选 `repo`、`issue`、`notification` 权限。
@@ -50,7 +70,7 @@ npx -y gitea-toolkit-mcp --help
   "mcpServers": {
     "gitea": {
       "command": "npx",
-      "args": ["-y", "gitea-toolkit-mcp", "--url", "https://gitea.example.com"],
+      "args": ["-y", "@echo-note/gitea-toolkit-mcp", "--url", "https://gitea.example.com"],
       "env": { "GITEA_TOKEN": "你的访问令牌" }
     }
   }
@@ -67,7 +87,7 @@ npx -y gitea-toolkit-mcp --help
     "gitea": {
       "command": "npx",
       "args": [
-        "-y", "gitea-toolkit-mcp",
+        "-y", "@echo-note/gitea-toolkit-mcp",
         "--url", "https://gitea.example.com",
         "--token", "你的访问令牌"
       ]
@@ -78,7 +98,7 @@ npx -y gitea-toolkit-mcp --help
 
 ### 其它客户端
 
-只要支持 stdio 型 MCP Server，用 `npx -y gitea-toolkit-mcp` 作为启动命令、
+只要支持 stdio 型 MCP Server，用 `npx -y @echo-note/gitea-toolkit-mcp` 作为启动命令、
 上面那张表里的参数作为入参即可。
 
 ## 关于仓库参数

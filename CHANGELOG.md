@@ -2,6 +2,69 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.7.0] - 2026-09-18
+
+### 新增
+
+- **Actions 侧边栏视图**。0.6.0 只加了 AI 工具，界面上完全看不到 Actions ——
+  现在「仓库」视图里每个仓库多一个 **Actions** 分组：
+
+  ```
+  仓库 → your-repo
+         ├── 分支
+         ├── 打开的 Issue
+         ├── 打开的 Pull Request
+         └── Actions
+              ├── 工作流      → 每个工作流（启用/停用用图标区分，点开进浏览器）
+              └── 最近运行    → 每次运行（状态图标）→ 展开看作业 → 点作业看日志
+  ```
+
+  为什么再分「工作流 / 最近运行」两层而不是直接混排：前者是**定义**、后者是**执行结果**，
+  混在一起会让「3 个工作流 + 37 次运行」看起来像 40 个同类条目。
+
+  配套命令（右键菜单 / 命令面板）：
+
+  | 命令 | 入口 |
+  | --- | --- |
+  | `Gitea: 查看作业日志` | 点击作业节点，或右键 → 在编辑器里打开纯文本日志 |
+  | `Gitea: 重跑 Actions` | 右键运行节点，可选「整条重跑 / 仅重跑失败作业」 |
+  | `Gitea: 触发工作流` | 右键工作流节点，输入 ref（默认填仓库默认分支） |
+
+  运行/作业的状态图标覆盖全部取值：成功 / 失败 / 超时 / 取消 / 跳过 / 进行中（`sync~spin`）/
+  排队中 / 未知。
+
+- 新增 `createActionWorkflowNode` / `createActionRunNode` / `createActionJobNode`、
+  `actionIcons`、`workflowIcon`、`actionStateIcon`，以及 `nodeUrl.ts` 中对应的地址推导分支。
+
+### 变更
+
+- **独立 MCP 包改发 GitHub Packages，不再依赖 npmjs.org**：
+  - 包名由 `gitea-toolkit-mcp` 改为 **`@echo-note/gitea-toolkit-mcp`**
+    （GitHub Packages **只接受带 scope 的包名，且只能小写**）
+  - CI 用内置 `GITHUB_TOKEN` 发布，**不再需要 `NPM_TOKEN` secret**，
+    只需 job 声明 `packages: write`。也就是说这一步现在**开箱即用**，不再是空转的
+  - scope→registry 映射与认证放在 `packages/mcp-server/.npmrc`（**包级**）。
+
+    > 之所以不用改 CI 里 `setup-node` 的 `registry-url`：同一个 job 的
+    > VS Code Marketplace 步骤要执行 `npx @vscode/vsce`，那是从**公共 registry** 拉取的，
+    > 把全局 registry 指向 `npm.pkg.github.com` 会让它拉不到。包级配置互不影响。
+
+  > ⚠️ **代价（必须知道）**：GitHub Packages 的 npm 源**不接受匿名安装**，
+  > 官方文档明确写着发布、安装、删除**公开**包同样需要访问令牌。
+  > 因此 `npx -y ...` 不再开箱即用，用户需先建 classic PAT（`read:packages`）并写入 `~/.npmrc`。
+  > README 已给出完整的一次性配置步骤。
+
+  > 另外**刻意移除了 `--provenance`**：npm 官方说明来源证明目前只支持发布到公共 npm registry，
+  > 对 GitHub Packages 至少会被忽略、最坏会直接报错，不做没把握的事。
+  > GitHub Packages 自身会记录发布来源仓库；溯源需求另有 `actions/attest-build-provenance` 可用。
+
+### 修复
+
+- `scripts/preview-tree.mjs` 的图标名校验会把 `sync~spin` 误判为拼错。
+  `~modifier`（`spin` / `spin-inverse` / `pulse`）是 VS Code 的**动画修饰符**，不是 codicon 名字，
+  校验前必须先剥离；同时对未知修饰符显式报错，避免真写错却静默放过。
+
+
 ## [0.6.0] - 2026-09-18
 
 ### 新增

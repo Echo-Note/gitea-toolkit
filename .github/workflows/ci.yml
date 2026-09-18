@@ -147,7 +147,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      # npm publish --provenance 需要：向 npm 签发产物来源证明（绑定到具体 repo / workflow / commit）
+      # 发布 MCP 包到 GitHub Packages 需要（用内置 GITHUB_TOKEN，无需自建 secret）
+      packages: write
+      # 供 secrets.GITHUB_TOKEN 之外的 OIDC 场景留用（例如将来的 Entra ID 发布）
       id-token: write
     outputs:
       version: ${{ steps.resolve.outputs.version }}
@@ -158,7 +160,7 @@ jobs:
 
       - name: 安装 Node
         # registry-url 会写入 .npmrc（token 由 NODE_AUTH_TOKEN 提供）；
-        # 固定版本也保证 npm CLI 够新，--provenance 需要 npm >= 9.5
+        # 固定版本也保证 npm CLI 够新（GitHub Packages 的 scope 映射与认证都在包级 .npmrc 里）
         uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -310,8 +312,12 @@ jobs:
           echo "::notice title=认证方式时限::Azure DevOps 全局 PAT 将于 2026-12-01 停用，届时本步骤需迁移到 Entra ID（vsce publish --azure-credential）。"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
-      - name: 发布到 npm
+      - name: 发布到 GitHub Packages
         id: npm
+        # 发布到 GitHub Packages（npm 协议），**不用 npmjs.org**，也不需要额外 secret：
+        # 用内置 GITHUB_TOKEN 即可，仅需 packages: write 权限。
+        # 认证与 scope 映射来自 packages/mcp-server/.npmrc（包级，避免影响本 job 中
+        # `npx @vscode/vsce` 对公共 registry 的依赖）。
         # 与「发布到 Open VSX」同样的顺序约束：必须排在创建 Release 之前
         # （本 job 以「Release 是否存在」判断该版本是否已发，先建 Release 会让重跑整体跳过）。
         #
@@ -319,7 +325,7 @@ jobs:
         # 非 VS Code 的 MCP 客户端用 `npx` 直接接入，无需安装扩展。
         if: steps.resolve.outputs.tag_exists == 'false'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           PKG_DIR="packages/mcp-server"
@@ -327,16 +333,16 @@ jobs:
           VERSION="$(node -p "require('./${PKG_DIR}/package.json').version")"
 
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::notice title=跳过 npm 发布::未配置 NPM_TOKEN secret。配置后本步骤自动启用。"
+            echo "::notice title=跳过 GitHub Packages 发布::未取到 GITHUB_TOKEN（通常意味着 workflow 权限配置有误）。"
             echo "result=skipped" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           # 两个包共用同一版本号，是「同一次构建产出、内容一致」的前提。
-          # 一旦分叉就没人说得清哪个 npm 版本对应哪个扩展版本，故在此硬拦。
+          # 一旦分叉就没人说得清哪个包版本对应哪个扩展版本，故在此硬拦。
           ROOT_VERSION="$(node -p "require('./package.json').version")"
           if [ "${VERSION}" != "${ROOT_VERSION}" ]; then
-            echo "::error title=npm 包版本与扩展不一致::${PKG_DIR}=${VERSION}，扩展=${ROOT_VERSION}。请检查 scripts/bump-version.mjs 的版本同步是否生效。"
+            echo "::error title=包版本与扩展不一致::${PKG_DIR}=${VERSION}，扩展=${ROOT_VERSION}。请检查 scripts/bump-version.mjs 的版本同步是否生效。"
             exit 1
           fi
 
@@ -345,27 +351,32 @@ jobs:
             exit 1
           }
 
+          # **必须进入包目录再执行 npm**：scope→registry 的映射与认证来自
+          # packages/mcp-server/.npmrc，在仓库根目录跑 npm 读的是根目录的配置，映射不生效。
+          cd "${PKG_DIR}"
+
           # 幂等：该版本已发布过就跳过（典型场景是 job 失败后重跑）
           if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-            echo "::notice title=跳过 npm 发布::${NAME}@${VERSION} 已存在。"
+            echo "::notice title=跳过 GitHub Packages 发布::${NAME}@${VERSION} 已存在。"
             echo "result=exists" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # --provenance 会向 npm 附上产物来源证明，用户可核对「这个包确实由本仓库的
-          # 哪次 workflow、哪个 commit 构建」，对要 npx 执行本地代码的场景尤其重要。
-          if ! npm publish "${PKG_DIR}" --provenance --access public; then
+          # 刻意不加 --provenance：npm 官方说明来源证明目前只支持发布到公共 npm registry，
+          # 对 GitHub Packages 至少会被忽略、最坏会直接报错。这里不做没把握的事。
+          # GitHub Packages 自身会记录发布来源仓库，溯源需求另有 actions/attest-build-provenance 可用。
+          if ! npm publish --access public; then
             # 复查后判定：可能是并发/重跑导致的「版本已存在」，而非真的失败
             if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-              echo "::warning title=npm 已有该版本::发布命令报错，但 ${NAME}@${VERSION} 确实已在 npm 上，按成功处理。"
+              echo "::warning title=GitHub Packages 已有该版本::发布命令报错，但 ${NAME}@${VERSION} 确实已存在，按成功处理。"
               echo "result=exists" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::error title=npm 发布失败::请确认 NPM_TOKEN 有效（需 Automation 或具备 publish 权限的 Granular Token），且包名 ${NAME} 未被他人占用。"
+            echo "::error title=GitHub Packages 发布失败::请确认 workflow 声明了 packages: write，且包名 ${NAME} 的 scope（@echo-note）与仓库 owner 一致。"
             exit 1
           fi
 
-          echo "::notice title=已发布到 npm::${NAME}@${VERSION}"
+          echo "::notice title=已发布到 GitHub Packages::${NAME}@${VERSION}"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
       - name: 创建 Release（同时依据打包版本打 tag）
@@ -443,15 +454,13 @@ jobs:
               echo
               case "${NPM_RESULT}" in
                 published)
-                  echo "**npm**：\`gitea-toolkit-mcp\` 已发布 ✅（含 provenance 证明）"
+                  echo "**GitHub Packages**：\`@echo-note/gitea-toolkit-mcp\` 已发布 ✅"
                   ;;
                 exists)
-                  echo "**npm**：该版本已存在，跳过 ⏭️"
+                  echo "**GitHub Packages**：该版本已存在，跳过 ⏭️"
                   ;;
                 *)
-                  echo "**npm**：未发布 —— 未配置 \`NPM_TOKEN\` secret ⏭️"
-                  echo
-                  echo "> 配置仓库 secret \`NPM_TOKEN\` 后，本步骤会在下次发版时自动启用，无需再改 workflow。"
+                  echo "**GitHub Packages**：未发布 ⏭️"
                   ;;
               esac
             else

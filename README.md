@@ -1,12 +1,14 @@
 # Gitea Toolkit（VS Code 扩展）
 
 把 Gitea 搬进编辑器，并让 AI 助手（**CodeBuddy**、Copilot、Cursor 等）直接操作 Gitea：
-仓库、分支、Issue、Pull Request、通知的读写全部通过同一套工具暴露给模型。
+仓库、分支、Issue、Pull Request、通知、**Actions** 的读写全部通过同一套工具暴露给模型。
 
 - 目标：Gitea **1.26.4**（API 依据其 OpenAPI 规范 `swagger.v1.json` 逐项核对）
 - 侧边栏 4 个视图：仓库 / 我的 Issue / 我的 Pull Request / 通知
+  （仓库节点下含 **Actions** 分组：工作流、运行记录、作业日志）
 - **Issue / PR 详情交互面板**：回复、关闭、重新打开、评审、合并、检出分支
-- 26 个编辑器命令 + **35 个 AI 工具**
+- **Gitea Actions**：列出工作流与运行、查看作业日志、触发 / 重跑工作流
+- 29 个编辑器命令 + **35 个 AI 工具**
 - 两种 AI 接入方式：**MCP Server**（stdio）与 **语言模型工具**（`vscode.lm.registerTool`）
 
 ---
@@ -220,7 +222,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | --- | --- |
 | **CodeBuddy** | **不消费** VS Code 的 MCP 贡献点，必须落盘 → 执行 `Gitea: 写入 CodeBuddy MCP 配置` |
 | **VS Code** | 支持 MCP Definition Provider → 扩展激活后自动出现在 MCP 面板，**无需落盘** |
-| **其它 MCP 客户端** | **不必装扩展**：直接用独立 npm 包 `npx -y gitea-toolkit-mcp`（见下） |
+| **其它 MCP 客户端** | **不必装扩展**：用独立包 `@echo-note/gitea-toolkit-mcp`（发布在 GitHub Packages，需先配 `.npmrc`，见下） |
 
 > 这一点实测确认过：CodeBuddy 的 MCP 面板完全由 `~/.codebuddy/mcp.json` 驱动。
 > 即使扩展已经在 `package.json` 声明 `contributes.mcpServerDefinitionProviders`
@@ -254,12 +256,31 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit_mcp', { ... });
 
 访问令牌在「服务器即将启动」回调中才注入，不会长期停留在配置对象里。
 
-#### 其它 MCP 客户端：用独立 npm 包（无需装扩展）
+#### 其它 MCP 客户端：用独立包（无需装扩展）
 
-MCP Server 已作为**独立 npm 包**发布，不依赖 VS Code 扩展，任何支持 stdio 的 MCP 客户端均可接入：
+MCP Server 已作为**独立包** `@echo-note/gitea-toolkit-mcp` 发布，不依赖 VS Code 扩展，
+任何支持 stdio 的 MCP 客户端均可接入。
+
+**① 它发布在 GitHub Packages，不是 npmjs.org —— 必须先配认证。**
+
+GitHub Packages 的 npm 源**不接受匿名安装**（官方原文：*publish, install, and delete
+private, internal, and **public** packages* 都需要访问令牌），因此 `npx` 无法开箱即用。
+先做一次性配置：
 
 ```bash
-npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+# 1. 建一个 classic PAT，勾选 read:packages
+#    https://github.com/settings/tokens
+# 2. 写入 ~/.npmrc
+cat >> ~/.npmrc <<'EOF'
+@echo-note:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=<你的 PAT>
+EOF
+```
+
+**② 然后再接入：**
+
+```bash
+npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 ```
 
 ```json
@@ -267,15 +288,19 @@ npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
   "mcpServers": {
     "gitea": {
       "command": "npx",
-      "args": ["-y", "gitea-toolkit-mcp", "--url", "https://gitea.example.com"],
+      "args": ["-y", "@echo-note/gitea-toolkit-mcp", "--url", "https://gitea.example.com"],
       "env": { "GITEA_TOKEN": "你的令牌" }
     }
   }
 }
 ```
 
-`npx -y gitea-toolkit-mcp --help` 可查看全部参数（`--no-verify-tls`、`--timeout`、`--max-output`），
-命令行参数优先于环境变量。npm 上的 README 有 Claude Desktop / Cursor 的完整示例。
+`npx -y @echo-note/gitea-toolkit-mcp --help` 可查看全部参数（`--no-verify-tls`、`--timeout`、
+`--max-output`），命令行参数优先于环境变量。包目录里的 README 有 Claude Desktop / Cursor 的完整示例。
+
+> **如果嫌麻烦**：改用「装扩展」的方案就完全不需要这些 —— 扩展本身已经把 MCP Server 一并装好了，
+> 配置命令是 `Gitea: 写入 CodeBuddy MCP 配置` 或 `Gitea: 复制 MCP 配置到剪贴板`。
+> 独立包的价值仅在于**完全不想装 VS Code 系编辑器**的场景。
 
 > **与扩展同源同构建**：共用 `src/core` 与工具定义；`esbuild.js` 一次构建后把**同一份产物**
 > 复制给扩展与 npm 包两侧（内容字节一致，只是落点不同），因此两边行为不会漂移。

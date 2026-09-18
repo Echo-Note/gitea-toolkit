@@ -7,7 +7,16 @@
  * 图标统一由 {@link ./icons} 提供，本文件只负责节点结构与交互绑定。
  */
 import * as vscode from 'vscode';
-import { branchIcon, issueIcon, pullIcon, repoIcon, type IconSpec, type RepoIconFlags } from './icons';
+import {
+  actionStateIcon,
+  branchIcon,
+  issueIcon,
+  pullIcon,
+  repoIcon,
+  workflowIcon,
+  type IconSpec,
+  type RepoIconFlags,
+} from './icons';
 
 /**
  * 把纯数据图标描述转换为 VS Code 主题图标。
@@ -21,7 +30,17 @@ export function toThemeIcon(spec: IconSpec): vscode.ThemeIcon {
 }
 
 /** 节点类型，用于生成 `contextValue` 以驱动右键菜单可见性。 */
-export type GiteaNodeKind = 'repo' | 'issue' | 'pull' | 'branch' | 'notification' | 'group' | 'message';
+export type GiteaNodeKind =
+  | 'repo'
+  | 'issue'
+  | 'pull'
+  | 'branch'
+  | 'notification'
+  | 'group'
+  | 'message'
+  | 'actionWorkflow'
+  | 'actionRun'
+  | 'actionJob';
 
 /** Issue 节点携带的数据。 */
 export interface IssueNodePayload {
@@ -58,6 +77,40 @@ export interface NotificationNodePayload {
   repoFullName?: string;
   htmlUrl?: string;
   unread?: boolean;
+}
+
+/** Actions 工作流节点携带的数据。 */
+export interface ActionWorkflowNodePayload {
+  owner: string;
+  repo: string;
+  workflowId: string;
+  name: string;
+  state: string;
+  htmlUrl: string;
+}
+
+/** Actions 运行节点携带的数据。 */
+export interface ActionRunNodePayload {
+  owner: string;
+  repo: string;
+  /** API 的 run id（不是网页上的 #编号）。 */
+  runId: number;
+  runNumber: number;
+  title: string;
+  status?: string;
+  conclusion?: string;
+  htmlUrl: string;
+}
+
+/** Actions 作业节点携带的数据。 */
+export interface ActionJobNodePayload {
+  owner: string;
+  repo: string;
+  jobId: number;
+  name: string;
+  status?: string;
+  conclusion?: string;
+  htmlUrl?: string;
 }
 
 /** 通用树节点。 */
@@ -174,6 +227,69 @@ export function createBranchNode(
   const node = new GiteaNode('branch', label, vscode.TreeItemCollapsibleState.None, payload);
   node.iconPath = toThemeIcon(branchIcon(protectedBranch));
   node.command = { command: 'gitea.openInBrowser', title: '在浏览器打开', arguments: [node] };
+  return node;
+}
+
+/**
+ * 创建 Actions 工作流节点。
+ * @param payload 业务数据
+ * @returns 节点
+ */
+export function createActionWorkflowNode(payload: ActionWorkflowNodePayload): GiteaNode {
+  const node = new GiteaNode(
+    'actionWorkflow',
+    payload.name,
+    vscode.TreeItemCollapsibleState.None,
+    payload,
+  );
+  node.description = payload.state === 'active' ? undefined : '已停用';
+  node.iconPath = toThemeIcon(workflowIcon(payload.state));
+  node.tooltip = new vscode.MarkdownString(
+    `**${payload.name}**${payload.state === 'active' ? '' : '（已停用）'}\n\n文件：\`${payload.workflowId}\`\n\n[在浏览器中打开](${payload.htmlUrl})`,
+  );
+  node.command = { command: 'gitea.openInBrowser', title: '在浏览器打开', arguments: [node] };
+  return node;
+}
+
+/**
+ * 创建 Actions 运行节点。展开时懒加载其作业列表。
+ * @param label 显示标题
+ * @param payload 业务数据
+ * @param loadChildren 作业加载器
+ * @returns 节点
+ */
+export function createActionRunNode(
+  label: string,
+  payload: ActionRunNodePayload,
+  loadChildren: () => Promise<GiteaNode[]>,
+): GiteaNode {
+  const node = new GiteaNode(
+    'actionRun',
+    label,
+    vscode.TreeItemCollapsibleState.Collapsed,
+    payload,
+    loadChildren,
+  );
+  node.iconPath = toThemeIcon(actionStateIcon(payload.status, payload.conclusion));
+  const branch = payload.title ? `\n\n${payload.title}` : '';
+  node.tooltip = new vscode.MarkdownString(
+    `**#${payload.runNumber}** \`${payload.status ?? ''}\` / \`${payload.conclusion ?? ''}\`${branch}\n\n所属：\`${payload.owner}/${payload.repo}\`\n\n[在浏览器中打开](${payload.htmlUrl})`,
+  );
+  return node;
+}
+
+/**
+ * 创建 Actions 作业节点。点击在编辑器中打开日志。
+ * @param payload 业务数据
+ * @returns 节点
+ */
+export function createActionJobNode(payload: ActionJobNodePayload): GiteaNode {
+  const node = new GiteaNode('actionJob', payload.name, vscode.TreeItemCollapsibleState.None, payload);
+  node.iconPath = toThemeIcon(actionStateIcon(payload.status, payload.conclusion));
+  node.tooltip = new vscode.MarkdownString(
+    `**${payload.name}** \`${payload.status ?? ''}\` / \`${payload.conclusion ?? ''}\`\n\n点击查看日志`,
+  );
+  node.command = { command: 'gitea.showJobLogs', title: '查看日志', arguments: [node] };
   return node;
 }
 

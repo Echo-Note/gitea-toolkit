@@ -4,7 +4,14 @@
  * 优先使用节点自带的 `htmlUrl`（由 provider 从 API 响应填充）；
  * 缺失时按节点类型推导，作为兜底，避免「点了却说没有地址」这种体验。
  */
-import { branchWebUrl, issueWebUrl, pullWebUrl, repoWebUrl } from '../../core/urls';
+import {
+  branchWebUrl,
+  issueWebUrl,
+  pullWebUrl,
+  repoWebUrl,
+  runWebUrl,
+  workflowWebUrl,
+} from '../../core/urls';
 import { readSettings } from '../config';
 import type { GiteaNode } from '../views/nodes';
 
@@ -51,6 +58,15 @@ export function resolveNodeWebUrl(node: unknown): string | undefined {
     case 'pull': {
       const index = asNumber(payload.number);
       return index === undefined ? undefined : pullWebUrl(serverUrl, owner, repo, index);
+    }
+    case 'actionWorkflow': {
+      const workflowId = asString(payload.workflowId);
+      return workflowId ? workflowWebUrl(serverUrl, owner, repo, workflowId) : undefined;
+    }
+    case 'actionRun': {
+      // 网页链接用的是 run_number（列表上的 #编号），不是 API 的 runId
+      const runNumber = asNumber(payload.runNumber);
+      return runNumber === undefined ? undefined : runWebUrl(serverUrl, owner, repo, runNumber);
     }
     default:
       return undefined;
