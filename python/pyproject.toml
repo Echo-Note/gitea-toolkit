@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "gitea-toolkit-mcp"
 # 版本由 scripts/bump-version.mjs 与根 package.json / MCP npm 包同步
-version = "0.9.2"
+version = "0.9.3"
 description = "Gitea 的 MCP 工具服务（stdio）：仓库 / Issue / Pull Request / 通知 / Gitea Actions 的读写。与 gitea-toolkit 扩展同源，任何 MCP 客户端均可接入。"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,8 +27,11 @@ dependencies = [
 ]
 
 [project.urls]
+# ⚠️ 这里的 URL **不能**写成 `git+https://…/…git`：那是 npm 的写法（npm 那边反而**要求**
+# 带 `git+` 前缀），而 PyPI 的 core metadata 只认普通 URL，带 `git+` 会被 400 直接拒收。
+# 同一份仓库地址在两个生态里写法相反，是第一次发 PyPI 时踩到的。
 Homepage = "https://github.com/Echo-Note/gitea-toolkit"
-Repository = "git+https://github.com/Echo-Note/gitea-toolkit.git"
+Repository = "https://github.com/Echo-Note/gitea-toolkit"
 Issues = "https://github.com/Echo-Note/gitea-toolkit/issues"
 
 [project.scripts]

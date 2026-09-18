@@ -2,6 +2,33 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.9.3] - 2026-09-18
+
+### 修复
+
+- **`--version` 与 MCP 的 serverInfo.version 报的是旧版本号**（装着 0.9.2 却显示 0.9.1）。
+  根因是包里还有**第四份**硬编码版本号：`python/src/gitea_toolkit_mcp/__init__.py` 里写着
+  `__version__ = "0.9.1"`，注释还注明「由 `scripts/bump-version.mjs` 保持同步」——
+  而那个脚本只改 package.json / npm 包 / pyproject.toml，**根本不碰这个文件**。
+  现在改为**从已安装分发包的元数据里读**（`importlib.metadata`），这份副本直接删掉：
+  少一份副本，就少一处「能忘记同步」的地方。
+
+  抓到它的方式值得记下来：**从 PyPI 真实装一遍再跑**（`uvx gitea-toolkit-mcp@0.9.2 --version`），
+  而不是只看构建产物的元数据 —— 元数据是对的，跑起来才是错的。
+
+### 工程
+
+- **`scripts/bump-version.mjs` 补上 `python/pyproject.toml` 的同步。** 该文件里本就写着
+  「版本由本脚本同步」，实际并没有 —— 于是 PyPI 包会悄悄停在旧版本号上，而发布时
+  **没有任何机制会报错**。
+- **`npm run check:changelog` 新增「三个发布物（扩展 / npm 包 / PyPI 包）版本号必须一致」。**
+  已反向验证：把 `pyproject.toml` 改回旧版本会立刻被拦下，并给出「跑 `npm run version:patch`
+  会一起改」的提示。
+- 补记一处首次发 PyPI 才暴露的坑：`python/pyproject.toml` 里的 `Repository` 原写成
+  `git+https://…/….git` —— 那是 **npm 的写法**（npm 那边反而**要求**带 `git+` 前缀），
+  而 PyPI 的 core metadata 只认普通 URL，首次上传被 **400** 直接拒收。
+  同一份仓库地址在两个生态里写法相反，已在文件里注明。
+
 ## [0.9.2] - 2026-09-18
 
 > 为什么会有 0.9.2：**0.9.1 是在 Python 版进仓库之前发出去的** —— 它只包含扩展与 npm 包，
