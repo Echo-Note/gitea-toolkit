@@ -19,6 +19,7 @@ import { createGitea } from '../core/index';
 import { describeError } from '../core/errors';
 import { TOOL_CATALOG, type GiteaToolContext } from '../ai/tools/index';
 import { resolveDefaultRepo } from './gitRemote';
+import { CompatibilityMonitor } from './compatibility';
 
 /** 从环境变量读取配置。 */
 interface ServerEnv {
@@ -184,8 +185,14 @@ function logToStderr(message: string, detail?: unknown): void {
  * @param server MCP Server 实例
  * @param context 工具执行上下文
  * @param maxOutputLength 文本输出上限
+ * @param compatibility 版本兼容性监测器（提示会插在返回开头）
  */
-function registerTools(server: McpServer, context: GiteaToolContext, maxOutputLength: number): void {
+function registerTools(
+  server: McpServer,
+  context: GiteaToolContext,
+  maxOutputLength: number,
+  compatibility: CompatibilityMonitor,
+): void {
   for (const tool of TOOL_CATALOG) {
     server.registerTool(
       tool.name,
@@ -201,17 +208,21 @@ function registerTools(server: McpServer, context: GiteaToolContext, maxOutputLe
         },
       },
       async (input: Record<string, unknown>) => {
+        // 兼容性提示**先拼再截断**：截断发生在结尾，这样提示永远不会被切掉。
+        // 成功与失败两条路都带上 —— 版本不兼容本身就可能表现为调用失败。
         try {
           const result = await tool.handler(input, context);
-          const text = clampText(result.text, maxOutputLength);
+          const notice = await compatibility.takeNotice();
+          const text = clampText(`${notice}${result.text}`, maxOutputLength);
           return {
             content: [{ type: 'text' as const, text }],
             ...(result.data !== undefined ? { structuredContent: { result: result.data } } : {}),
           };
         } catch (error) {
           logToStderr(`工具 ${tool.name} 执行失败`, error);
+          const notice = await compatibility.takeNotice();
           return {
-            content: [{ type: 'text' as const, text: `调用失败：${describeError(error)}` }],
+            content: [{ type: 'text' as const, text: `${notice}调用失败：${describeError(error)}` }],
             isError: true,
           };
         }
@@ -276,17 +287,29 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
 
   const context: GiteaToolContext = {
     operations,
+    serverUrl: config.serverUrl,
     defaultRepo: await resolveDefaultRepo(process.cwd(), config.serverUrl),
     openExternal: async (url: string) => {
       logToStderr(`（MCP 环境无法直接打开浏览器）${url}`);
     },
   };
 
+  const compatibility = new CompatibilityMonitor(
+    async () => (await operations.misc.getVersion()).version,
+    logToStderr,
+  );
+  // 后台先探一次：只为让 stderr 上尽早留下版本信息，不阻塞启动
+  void compatibility.evaluate();
+
   const server = new McpServer(
     { name: 'gitea-toolkit', version: resolveVersion() },
-    { instructions: 'Gitea 仓库 / Issue / Pull Request / 通知 / 工作流 的读写工具。未显式指定 owner、repo 时会尝试从当前工作目录的 git origin 远端推断。' },
+    {
+      instructions:
+        'Gitea 仓库 / Issue / Pull Request / 通知 / 工作流 的读写工具。未显式指定 owner、repo 时会尝试从当前工作目录的 git origin 远端推断。' +
+        '首次调用工具时会自动检查服务端 Gitea 版本；若返回以 ⚠️ 开头提示版本不兼容，请把该提示如实转达给用户。',
+    },
   );
-  registerTools(server, context, config.maxOutputLength);
+  registerTools(server, context, config.maxOutputLength, compatibility);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

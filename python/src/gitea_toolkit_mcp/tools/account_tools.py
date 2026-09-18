@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pydantic import Field
 
 from ..operations import AccountOperations
+from ..version import compatibility_status_line, evaluate_compatibility
 from ._format import relative_time
 from ._registry import tool
 from ._shared import ctx
@@ -20,14 +21,26 @@ def register(server: Any) -> None:
     async def gitea_get_current_user() -> str:
         """获取当前访问令牌对应的 Gitea 用户信息。也可用于校验令牌是否有效、实例是否可连通。"""
         c = ctx()
-        user = await AccountOperations(c.client).current_user()
+        operations = AccountOperations(c.client)
+        user = await operations.current_user()
+        # 版本一并交代：这个工具的定位就是「令牌 / 连通性 / 环境自查」，
+        # 顺手把服务端版本与兼容性说清楚，省得用户另开一次提问。
+        # 取不到版本不影响本工具（与自动探测同一态度）。
+        try:
+            compat = evaluate_compatibility(await operations.server_version())
+        except Exception:  # noqa: BLE001 - 版本是附加信息，取不到也要能自查令牌
+            compat = None
         lines = [
-            f"# {user.get('full_name') or user.get('login')}",
+            # 字段与 TS 版**逐字对齐**（对齐前 Python 用的是 full_name、且缺主页/注册时间）
+            f"# @{user.get('login')}",
             "",
-            f"- 用户名：`{user.get('login')}`",
-            f"- 邮箱：{user.get('email') or '（未公开）'}",
+            f"- 昵称：{user.get('full_name') or '-'}",
+            f"- 邮箱：{user.get('email') or '-'}",
             f"- 管理员：{'是' if user.get('is_admin') else '否'}",
+            f"- 主页：{user.get('html_url') or '-'}",
+            f"- 注册时间：{relative_time(user.get('created'))}",
             f"- 实例：{c.server_url}",
+            f"- 服务端版本：{compatibility_status_line(compat)}",
         ]
         return c.truncate("\n".join(lines))
 

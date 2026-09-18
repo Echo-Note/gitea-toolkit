@@ -179,3 +179,19 @@ export function evaluateCompatibility(rawVersion: string | undefined | null): Co
     shouldWarn: true,
   };
 }
+
+/**
+ * 兼容性状态的一行摘要（供状态栏、工具返回等「随手指带一句」的场景）。
+ *
+ * 措辞**刻意保持中性**（不写「本扩展」/「本 MCP」）：核心模块同时被扩展宿主与 MCP Server
+ * 使用，写死任一侧都会在另一侧说不通。两侧各自的完整说明见 `src/vscode/compatibility.ts`
+ * 与 `src/mcpServer/compatibility.ts`。
+ * @param result 判定结果；未取到时传 undefined
+ * @returns 形如 `1.26.4｜兼容性 ok（已核对 1.26.4）`
+ */
+export function compatibilityStatusLine(result: CompatibilityResult | undefined): string {
+  if (!result) {
+    return '（读取失败，不影响本次调用）';
+  }
+  return `${result.actual}｜兼容性 \`${result.level}\`（已核对 ${result.verified}）`;
+}

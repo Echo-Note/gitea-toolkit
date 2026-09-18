@@ -412,5 +412,190 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("共 100 字符", clipped, "截断要说明原始长度，不能静默丢内容")
 
 
+class TestVersionCompatibility(unittest.TestCase):
+    """服务端版本兼容性判定（纯计算 + 与 TS 版的口径一致性）。
+
+    为什么值得单独测：判定错了会有两种相反的坏结果 —— 该警告时不警告（用户在一台
+    1.19 的服务端上瞎试），或不该警告时乱警告（提示变噪音，被模型忽略）。
+    """
+
+    def test_parses_common_version_variants(self) -> None:
+        from gitea_toolkit_mcp.version import parse_version
+
+        cases = {
+            "1.26.4": (1, 26, 4),
+            "v1.26.4": (1, 26, 4),
+            "1.26.4+dev": (1, 26, 4),
+            "1.22.0-rc1": (1, 22, 0),
+            "1.26.4 (git: abcdef)": (1, 26, 4),
+            "1.26": (1, 26, 0),
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                parsed = parse_version(raw)
+                self.assertIsNotNone(parsed, f"{raw} 应能解析")
+                self.assertEqual((parsed.major, parsed.minor, parsed.patch), expected)
+
+        for raw in ("", None, "gitea", "dev"):
+            with self.subTest(raw=raw):
+                self.assertIsNone(parse_version(raw))
+
+    def test_evaluates_each_level(self) -> None:
+        from gitea_toolkit_mcp.version import evaluate_compatibility
+
+        cases = {
+            "1.26.4": ("ok", False),  # 与已核对版本同主次
+            "1.26.10": ("ok", False),  # 补丁差异视为兼容
+            "1.27.0": ("newer", True),
+            "2.0.0": ("newer", True),
+            "1.25.9": ("older", True),
+            "1.21.0": ("older", True),  # 恰好等于最低支持版本 → 仍可用
+            "1.20.9": ("unsupported", True),
+            "0.9.0": ("unsupported", True),
+            "": ("unknown", True),
+        }
+        for raw, (level, should_warn) in cases.items():
+            with self.subTest(version=raw):
+                result = evaluate_compatibility(raw)
+                self.assertEqual(result.level, level)
+                self.assertEqual(result.should_warn, should_warn)
+
+    def test_constants_and_wording_match_typescript(self) -> None:
+        """常量与面向模型的措辞必须与 TS 版逐字一致。
+
+        两个实现的工具返回是要求可互换的：同一台服务端，换个实现就该得到同样的结论与同样的话。
+        直接读 TS 源文件比对 —— Python 侧单方面改文案，这条测试会红。
+        """
+        import pathlib
+
+        from gitea_toolkit_mcp.version import (
+            MIN_SUPPORTED_GITEA_VERSION,
+            VERIFIED_GITEA_VERSION,
+        )
+
+        root = pathlib.Path(__file__).resolve().parents[2]
+        ts_version = root / "src" / "core" / "version.ts"
+        ts_notice = root / "src" / "mcpServer" / "compatibility.ts"
+        if not ts_version.exists() or not ts_notice.exists():
+            self.skipTest("不在完整仓库里（缺 TS 源码），跳过跨语言一致性检查")
+
+        ts_text = ts_version.read_text(encoding="utf-8")
+        notice_text = ts_notice.read_text(encoding="utf-8")
+        py_text = (root / "python" / "src" / "gitea_toolkit_mcp" / "version.py").read_text(
+            encoding="utf-8"
+        )
+
+        for name, value in (
+            ("VERIFIED_GITEA_VERSION", VERIFIED_GITEA_VERSION),
+            ("MIN_SUPPORTED_GITEA_VERSION", MIN_SUPPORTED_GITEA_VERSION),
+        ):
+            with self.subTest(constant=name):
+                self.assertIn(
+                    f"{name} = '{value}'",
+                    ts_text,
+                    f"{name} 与 TS 版不一致（TS 是 {value}？请核对 src/core/version.ts）",
+                )
+
+        # 面向模型的文案：两侧都出现的片段（改一侧就会红）
+        for phrase in (
+            "⚠️ **服务端 Gitea 版本兼容性提示 —— 请转达给用户**：",
+            "低于本 MCP 要求的最低版本",
+            "低于本 MCP 已核对的",
+            "高于本 MCP 已核对的",
+            "较新版本引入的部分能力可能不可用",
+            "无法识别服务端返回的版本号",
+            "该提示每个会话只出现一次",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, notice_text, f"TS 侧缺少「{phrase}」（mcpServer/compatibility.ts）")
+                self.assertIn(phrase, py_text, f"Python 侧缺少「{phrase}」（version.py）")
+
+    def test_relative_time_matches_typescript(self) -> None:
+        """相对时间的口径必须与 TS 版一致（它是返回文本的一部分，两侧要能互换）。
+
+        改之前 Python 版有四处不同：空值返回空串、超过 30 天退化成绝对日期、
+        单位换算向下取整、未来时间说成「刚刚」。这些都不影响功能，却让同一份数据
+        在两个实现里显示成两个样子 —— 跨语言一致性检查就是这么抓出来的。
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from gitea_toolkit_mcp.tools._shared import relative_time
+
+        now = datetime.now(timezone.utc)
+
+        def ago(**kwargs: float) -> str:
+            return (now - timedelta(**kwargs)).isoformat()
+
+        self.assertEqual(relative_time(None), "-", "空值应返回 '-'（与 TS 一致，不是空串）")
+        self.assertEqual(relative_time(""), "-")
+        self.assertEqual(relative_time("不是时间"), "不是时间", "解析不了应原样返回")
+        self.assertTrue(relative_time(ago(seconds=10)).endswith("秒前"))
+        # 90 秒 = 1.5 分钟：四舍五入为 2 分钟（向下取整会得 1 分钟）
+        self.assertEqual(relative_time(ago(seconds=90)), "2 分钟前")
+        self.assertTrue(relative_time(ago(hours=3)).endswith("小时前"))
+        self.assertTrue(relative_time(ago(days=3)).endswith("天前"))
+        # 超过 30 天用「个月」，不退化成绝对日期
+        self.assertEqual(relative_time(ago(days=90)), "3 个月前")
+        # 未来时间用「后」
+        self.assertTrue(relative_time((now + timedelta(minutes=5)).isoformat()).endswith("分钟后"))
+        # Gitea 返回的是 Z 结尾的 ISO
+        self.assertTrue(relative_time("2024-01-01T00:00:00Z").endswith("前"))
+
+    def test_notice_injected_once_into_tool_result(self) -> None:
+        """版本不兼容时，提示要真的出现在**工具返回**里，且只出现一次。
+
+        为什么必须走真工具调用：注入点在注册装饰器里，只测 ``take_compatibility_notice``
+        等于没测「有没有接上」。这条用桩替身（不联网）验证完整链路。
+        """
+        from gitea_toolkit_mcp.operations import AccountOperations
+        from gitea_toolkit_mcp.server import ServerConfig, build_server
+
+        original_version = AccountOperations.server_version
+        original_user = AccountOperations.current_user
+
+        async def fake_version(_self) -> str:
+            return "1.19.0"
+
+        async def fake_user(_self) -> dict:
+            return {
+                "login": "alice",
+                "full_name": "Alice",
+                "email": "alice@example.com",
+                "is_admin": False,
+                "html_url": "https://gitea.example.com/alice",
+                "created": "2024-01-01T00:00:00Z",
+            }
+
+        AccountOperations.server_version = fake_version
+        AccountOperations.current_user = fake_user
+        try:
+            server = build_server(ServerConfig(server_url="https://gitea.example.com", token="x"))
+
+            async def call_twice() -> tuple[str, str]:
+                async with Client(server) as client:
+                    first = await client.call_tool("gitea_get_current_user", {})
+                    second = await client.call_tool("gitea_get_current_user", {})
+                    return text_of(first), text_of(second)
+
+            first, second = asyncio.run(call_twice())
+        finally:
+            AccountOperations.server_version = original_version
+            AccountOperations.current_user = original_user
+
+        self.assertTrue(first.startswith("⚠️"), f"首次返回应以提示开头，实际：{first[:80]}")
+        self.assertIn("低于本 MCP 要求的最低版本", first)
+        self.assertIn("请转达给用户", first)
+        self.assertNotIn("⚠️", second, "同一进程内不应重复提示（否则模型会把它当噪音）")
+        # 工具自身的内容不能因为拼接提示而丢失
+        self.assertIn("- 服务端版本：", second)
+        self.assertIn("1.19.0｜兼容性 `unsupported`", second)
+
+
+def text_of(result: object) -> str:
+    """从 CallToolResult 里取纯文本（测试助手）。"""
+    dumped = result.model_dump(by_alias=True, exclude_none=True)  # type: ignore[attr-defined]
+    return "\n".join(block.get("text", "") for block in (dumped.get("content") or []))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

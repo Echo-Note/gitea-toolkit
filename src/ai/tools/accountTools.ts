@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { defineTool, type GiteaToolDefinition } from './types';
 import { relativeTime } from './helpers';
+import { compatibilityStatusLine, evaluateCompatibility } from '../../core/version';
 
 /** 账号域工具集合。 */
 export const accountTools: GiteaToolDefinition[] = [
@@ -18,6 +19,13 @@ export const accountTools: GiteaToolDefinition[] = [
     inputShape: {},
     handler: async (_input, ctx) => {
       const user = await ctx.operations.misc.getCurrentUser();
+      // 版本一并交代：这个工具的定位就是「令牌 / 连通性 / 环境自查」，
+      // 顺手把服务端版本与兼容性说清楚，省得用户另开一次提问。
+      // 取不到版本不影响本工具（与 MCP 侧的兼容性探测同一态度）。
+      const version = await ctx.operations.misc
+        .getVersion()
+        .then((info) => info.version)
+        .catch(() => undefined);
       const text = [
         `# @${user.login}`,
         '',
@@ -26,6 +34,10 @@ export const accountTools: GiteaToolDefinition[] = [
         `- 管理员：${user.is_admin ? '是' : '否'}`,
         `- 主页：${user.html_url ?? '-'}`,
         `- 注册时间：${relativeTime(user.created)}`,
+        `- 实例：${ctx.serverUrl}`,
+        `- 服务端版本：${compatibilityStatusLine(
+          version === undefined ? undefined : evaluateCompatibility(version),
+        )}`,
       ].join('\n');
       return { text, data: user };
     },

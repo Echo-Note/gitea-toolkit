@@ -22,6 +22,8 @@ export interface GiteaToolResult {
 export interface GiteaToolContext {
   /** Gitea 操作集合。 */
   operations: GiteaOperations;
+  /** 已连接的 Gitea 实例地址（用于向模型交代「在跟哪个实例说话」）。 */
+  serverUrl: string;
   /** 当前工作区解析出的默认仓库（来自 git origin 远端）。 */
   defaultRepo?: { owner: string; repo: string };
   /** 在系统浏览器打开链接（仅扩展宿主可用）。 */

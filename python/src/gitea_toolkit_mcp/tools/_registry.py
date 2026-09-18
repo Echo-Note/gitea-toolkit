@@ -21,6 +21,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from ..errors import describe_error
+from ._shared import ctx
 
 #: 只读工具：不修改任何远端数据
 READ_ONLY = ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=True)
@@ -84,9 +85,20 @@ def tool(
         @functools.wraps(fn)  # 保留签名 —— SDK 据此生成 inputSchema（含 required）
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
-                return await fn(*args, **kwargs)
+                result = await fn(*args, **kwargs)
             except Exception as error:  # noqa: BLE001 - 统一转成模型可读的 ToolError
-                raise ToolError(describe_error(error)) from error
+                # 失败路径也带上提示：版本过低最典型的表现就是接口 404，
+                # 少了这句，模型只能看到一个「资源不存在」，无从判断是大版本差异。
+                notice = await ctx().take_compatibility_notice()
+                raise ToolError(f"{notice}{describe_error(error)}") from error
+
+            # 服务端版本不兼容时，把提示插在返回**开头**：MCP 里没有弹窗，
+            # 工具返回是唯一能到达模型的通道（`instructions` 里也要求它转达用户）。
+            # 拼在开头是有意的 —— 工具内部截断的是结尾，这样提示永远不会被切掉。
+            notice = await ctx().take_compatibility_notice()
+            if notice and isinstance(result, str):
+                return notice + result
+            return result
 
         return server.tool(name=name, title=title, annotations=annotations)(wrapper)
 

@@ -151,6 +151,7 @@ export class GiteaService implements vscode.Disposable {
     const { operations } = await this.ensureClient();
     return {
       operations,
+      serverUrl: readSettings().serverUrl,
       defaultRepo: await this.getDefaultRepo(),
       openExternal: async (url: string) => {
         await vscode.env.openExternal(vscode.Uri.parse(url));
