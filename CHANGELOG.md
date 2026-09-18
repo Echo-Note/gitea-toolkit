@@ -48,6 +48,12 @@
     后者需在 npm 包设置里配置 Trusted Publisher 指向本仓库的 `ci.yml`；
     本 job 已声明 `id-token: write`，满足其要求。注意它要求包**已存在**，
     所以首次发布只能用令牌或本地手动发一次。
+  - **本地手动首发必须显式带 `--otp=<6 位码>`**：实测即便刚 `npm login` 成功也不会自动
+    提示输入 OTP，而是直接 403 —— npm 只在收到特定错误码时才交互。错误信息本身就给了
+    两条出路（*Two-factor authentication **or** granular access token with bypass 2fa
+    enabled*），这次两条都没提供。
+  - 另注：**npm 正在收紧 bypass-2FA 令牌**的自动化发布能力（目标 2027 年 1 月，届时它只能
+    「暂存发布」再由维护者 2FA 批准），CI 应尽快迁到 OIDC 以避开这次变更。
   - **凭据类错误（401/403/ENEEDAUTH/EOTP/2FA）降级为「醒目提示 + 跳过」**，
     不再阻断 Release —— 凭据是配置问题，不该让已经发出去的市场版本连 Release 都建不出来。
     配置好后重跑即可补齐，发布步骤本身是幂等的。
