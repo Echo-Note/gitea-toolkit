@@ -2,7 +2,7 @@
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
   "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "publisher": "echo-note",
   "license": "MIT",
   "repository": {
@@ -1541,6 +1541,323 @@
               "description": "仅标记该时间点之前的通知，ISO 8601 格式。设置后 `all` 失效。"
             }
           },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_list_workflows",
+        "displayName": "列出 Actions 工作流",
+        "modelDescription": "列出仓库的全部 Gitea Actions 工作流（即 .gitea/workflows 下的 YAML），包含启用状态与工作流 ID。",
+        "userDescription": "列出 Gitea Actions 工作流",
+        "toolReferenceName": "gitea_list_workflows",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_list_action_runs",
+        "displayName": "列出 Actions 运行记录",
+        "modelDescription": "列出仓库的 Actions 运行记录，支持按触发事件、分支、状态、触发者、提交 SHA 过滤，用于排查 CI 是否通过。",
+        "userDescription": "列出 Actions 运行记录",
+        "toolReferenceName": "gitea_list_action_runs",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "event": {
+              "type": "string",
+              "description": "触发事件过滤，例如 push / pull_request / workflow_dispatch / schedule。"
+            },
+            "branch": {
+              "type": "string",
+              "description": "按分支过滤。"
+            },
+            "status": {
+              "type": "string",
+              "description": "按状态过滤，例如 success / failure / running / waiting。"
+            },
+            "actor": {
+              "type": "string",
+              "description": "按触发者用户名过滤。"
+            },
+            "head_sha": {
+              "type": "string",
+              "description": "按提交 SHA 过滤。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "返回数量上限，默认 20。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_get_action_run",
+        "displayName": "获取 Actions 运行详情",
+        "modelDescription": "获取单次 Actions 运行（workflow run）的详情，并列出它包含的全部作业及其步骤状态，用于定位是哪一步失败。",
+        "userDescription": "查看 Actions 运行详情",
+        "toolReferenceName": "gitea_get_action_run",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "run_id": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "运行 ID（列表结果里的 run id，不是 # 后面的编号）。"
+            }
+          },
+          "required": [
+            "run_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_get_job_logs",
+        "displayName": "获取作业日志",
+        "modelDescription": "获取某个 Actions 作业的原始日志文本。默认只保留**末尾**若干行，因为失败信息通常出现在最后。",
+        "userDescription": "查看 Actions 作业日志",
+        "toolReferenceName": "gitea_get_job_logs",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "job_id": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "作业 ID（可从 gitea_get_action_run 的结果取得）。"
+            },
+            "tail_lines": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 2000,
+              "description": "保留末尾多少行，默认 200。"
+            }
+          },
+          "required": [
+            "job_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_list_artifacts",
+        "displayName": "列出 Actions 产物",
+        "modelDescription": "列出仓库的 Actions 构建产物（artifact），包含大小与是否已过期。",
+        "userDescription": "列出 Actions 构建产物",
+        "toolReferenceName": "gitea_list_artifacts",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "name": {
+              "type": "string",
+              "description": "按产物名精确过滤。"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "返回数量上限，默认 20。"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_dispatch_workflow",
+        "displayName": "触发 Actions 工作流",
+        "modelDescription": "手动触发一个声明了 `on: workflow_dispatch` 的 Gitea Actions 工作流，可指定分支/标签/提交与 inputs。若工作流未声明 workflow_dispatch，服务端会拒绝。",
+        "userDescription": "手动触发 Gitea Actions 工作流",
+        "toolReferenceName": "gitea_dispatch_workflow",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "workflow_id": {
+              "type": "string",
+              "description": "工作流 ID 或文件名，例如 `ci.yml`。可用 gitea_list_workflows 查询。"
+            },
+            "ref": {
+              "type": "string",
+              "description": "目标引用：分支名、标签名或提交 SHA。"
+            },
+            "inputs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "传给工作流的输入键值对（字符串），对应 workflow_dispatch 声明的 inputs。"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "ref"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_rerun_action",
+        "displayName": "重新运行 Actions",
+        "modelDescription": "重新运行一次 Actions 运行记录：可整条重跑，也可只重跑失败的作业。注意 Gitea 的 API **不提供取消运行**，只有重跑。",
+        "userDescription": "重新运行 Gitea Actions",
+        "toolReferenceName": "gitea_rerun_action",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "run_id": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "运行 ID。"
+            },
+            "failed_only": {
+              "type": "boolean",
+              "description": "设为 true 时只重跑失败的作业，默认 false（整条重跑）。"
+            }
+          },
+          "required": [
+            "run_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "giteaToolkit_gitea_set_workflow_enabled",
+        "displayName": "启用/停用 Actions 工作流",
+        "modelDescription": "启用或停用一个 Gitea Actions 工作流。停用后该工作流不会响应任何触发事件。",
+        "userDescription": "启用或停用 Gitea Actions 工作流",
+        "toolReferenceName": "gitea_set_workflow_enabled",
+        "canBeReferencedInPrompt": true,
+        "tags": [
+          "gitea",
+          "action"
+        ],
+        "icon": "$(gitea)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "仓库所属者。省略时使用当前工作区推断出的仓库。"
+            },
+            "repo": {
+              "type": "string",
+              "description": "仓库名。省略时使用当前工作区推断出的仓库。"
+            },
+            "workflow_id": {
+              "type": "string",
+              "description": "工作流 ID 或文件名，例如 `ci.yml`。"
+            },
+            "enabled": {
+              "type": "boolean",
+              "description": "true 为启用，false 为停用。"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "enabled"
+          ],
           "additionalProperties": false
         }
       }

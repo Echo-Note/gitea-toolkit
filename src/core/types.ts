@@ -332,6 +332,99 @@ export interface GiteaCombinedStatus {
   repository?: GiteaRepository;
 }
 
+/** Gitea Actions 工作流（`.gitea/workflows/*.yml`）。 */
+export interface GiteaActionWorkflow {
+  id: string;
+  name: string;
+  path: string;
+  /** 启用状态，取值 `active` / `disabled_manually` 等。 */
+  state: string;
+  badge_url?: string;
+  html_url?: string;
+  created_at?: string;
+  updated_at?: string;
+  deleted_at?: string;
+  url?: string;
+}
+
+/**
+ * 工作流运行记录。
+ *
+ * 注意 Gitea 的命名差异：`/actions/runs` 返回的是 {@link GiteaActionWorkflowRun}（含 `status`/
+ * `conclusion`），而 `/actions/tasks` 返回的是另一套结构。这里只用了前者。
+ */
+export interface GiteaActionWorkflowRun {
+  id: number;
+  /** 展示标题，通常是触发时的提交信息。 */
+  display_title?: string;
+  /** 触发事件，如 `push` / `pull_request` / `workflow_dispatch`。 */
+  event?: string;
+  status?: string;
+  conclusion?: string;
+  run_number?: number;
+  run_attempt?: number;
+  head_branch?: string;
+  head_sha?: string;
+  path?: string;
+  html_url?: string;
+  url?: string;
+  started_at?: string;
+  completed_at?: string;
+  actor?: GiteaUser;
+  trigger_actor?: GiteaUser;
+  head_repository?: GiteaRepository;
+  repository?: GiteaRepository;
+  repository_id?: number;
+}
+
+/** 运行中的单个作业（job）。 */
+export interface GiteaActionWorkflowJob {
+  id: number;
+  run_id?: number;
+  name: string;
+  status?: string;
+  conclusion?: string;
+  /** 作业所在的运行器标签，如 `ubuntu-latest`。 */
+  labels?: string[];
+  runner_id?: number;
+  runner_name?: string;
+  head_branch?: string;
+  head_sha?: string;
+  run_attempt?: number;
+  html_url?: string;
+  run_url?: string;
+  url?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at?: string;
+  steps?: GiteaActionWorkflowStep[];
+}
+
+/** 作业内的单个步骤。 */
+export interface GiteaActionWorkflowStep {
+  number: number;
+  name: string;
+  status?: string;
+  conclusion?: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+/** 运行产物（artifact）。 */
+export interface GiteaActionArtifact {
+  id: number;
+  name: string;
+  size_in_bytes?: number;
+  expired?: boolean;
+  expires_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  /** 下载地址（zip，需带 `Authorization` 头才能取到）。 */
+  archive_download_url?: string;
+  url?: string;
+  workflow_run?: GiteaActionWorkflowRun;
+}
+
 /** 分页元信息（从响应头 `X-Total-Count` / `Link` 解析）。 */
 export interface GiteaPageInfo {
   totalCount?: number;

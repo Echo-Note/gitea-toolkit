@@ -29,7 +29,7 @@ export interface GiteaToolContext {
 }
 
 /** 工具分类。 */
-export type GiteaToolCategory = 'repository' | 'issue' | 'pull' | 'account';
+export type GiteaToolCategory = 'repository' | 'issue' | 'pull' | 'account' | 'action';
 
 /** 只读 / 读写标记。 */
 export type GiteaToolAccess = 'read' | 'write';

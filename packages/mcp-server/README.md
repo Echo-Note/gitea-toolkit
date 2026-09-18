@@ -3,7 +3,7 @@
 Gitea 的 [MCP](https://modelcontextprotocol.io/) 工具服务（stdio 传输）。
 **独立运行，不需要安装 VS Code 扩展**，任何 MCP 客户端都能接入。
 
-提供 **27 个工具**，覆盖仓库、Issue、Pull Request、通知的读写，例如：
+提供 **35 个工具**，覆盖仓库、Issue、Pull Request、通知、Gitea Actions 的读写，例如：
 
 - 列出 / 搜索仓库、读取文件与提交历史
 - 新建、查询、更新、评论、关闭 Issue

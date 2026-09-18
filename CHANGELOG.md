@@ -2,6 +2,46 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.6.0] - 2026-09-18
+
+### 新增
+
+- **Gitea Actions 支持（8 个 AI 工具）**，AI 工具总数 27 → 35：
+
+  | 工具 | 说明 | 访问 |
+  | --- | --- | --- |
+  | `gitea_list_workflows` | 列出仓库的工作流与启用状态 | 只读 |
+  | `gitea_list_action_runs` | 列出运行记录，可按事件 / 分支 / 状态 / 触发者 / 提交 SHA 过滤 | 只读 |
+  | `gitea_get_action_run` | 运行详情 + 全部作业及步骤状态，并直接指出失败的作业 | 只读 |
+  | `gitea_get_job_logs` | 作业原始日志（**默认只保留末尾**若干行） | 只读 |
+  | `gitea_list_artifacts` | 列出构建产物（含大小与是否过期） | 只读 |
+  | `gitea_dispatch_workflow` | 手动触发 `workflow_dispatch`，可传 inputs | 写入 |
+  | `gitea_rerun_action` | 重跑整条运行，或只重跑失败作业 | 写入 |
+  | `gitea_set_workflow_enabled` | 启用 / 停用工作流 | 写入 |
+
+  新增 `ActionOperations`（`src/core/operations/actions.ts`）、
+  5 个 Actions 实体类型、`runWebUrl` / `workflowWebUrl`。
+
+### 说明
+
+- **日志取的是末尾而非开头**：作业日志动辄上千行，而出错信息几乎总在最后，
+  因此 `gitea_get_job_logs` 默认保留最后 200 行（可用 `tail_lines` 调整）。
+- **刻意没有「取消运行」**：Gitea 1.26.4 的 API **不提供取消接口**，
+  只有 `rerun` / `rerun-failed-jobs`。`DELETE /actions/runs/{run}` 是**删除记录**，
+  语义完全不同，因此没有包装成「取消」暴露给 AI。
+- **产物只列不下载**：下载是 zip 二进制流，不适合作为工具返回值；
+  需要时用返回里的 `archive_download_url` 或走网页。
+- 写操作（dispatch / rerun / 启停）在 VS Code 语言模型工具路径下**会自动弹确认卡片**，
+  机制与既有的 `gitea_create_*` 一致（由工具定义的 `access: 'write'` 驱动，无需额外配置）。
+
+### 验证
+
+- 全部接口对**真实实例实调通过**（Gitea 1.26.4）：`listWorkflows` 3 个、
+  `listRuns` 5 条、`getRun`、`listRunJobs` 6 个作业（含 steps）、
+  `getJobLogs` 782 字符文本解析正常、`listArtifacts` 空结果路径正常。
+- 字段与路径逐一核对了实例的 `/swagger.v1.json`。
+
+
 ## [0.5.1] - 2026-09-18
 
 ### 变更

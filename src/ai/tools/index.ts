@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { LANGUAGE_MODEL_TOOL_PREFIX } from '../ids';
 import { accountTools } from './accountTools';
+import { actionTools } from './actionTools';
 import { issueTools } from './issueTools';
 import { pullTools } from './pullTools';
 import { repoTools } from './repoTools';
@@ -16,6 +17,7 @@ import type { GiteaToolDefinition } from './types';
 
 export * from './types';
 export { accountTools } from './accountTools';
+export { actionTools } from './actionTools';
 export { issueTools } from './issueTools';
 export { pullTools } from './pullTools';
 export { repoTools } from './repoTools';
@@ -26,6 +28,7 @@ export const TOOL_CATALOG: GiteaToolDefinition[] = [
   ...issueTools,
   ...pullTools,
   ...accountTools,
+  ...actionTools,
 ];
 
 /** 工具名前缀。 */

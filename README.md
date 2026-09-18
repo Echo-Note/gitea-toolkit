@@ -6,7 +6,7 @@
 - 目标：Gitea **1.26.4**（API 依据其 OpenAPI 规范 `swagger.v1.json` 逐项核对）
 - 侧边栏 4 个视图：仓库 / 我的 Issue / 我的 Pull Request / 通知
 - **Issue / PR 详情交互面板**：回复、关闭、重新打开、评审、合并、检出分支
-- 24 个编辑器命令 + **27 个 AI 工具**
+- 26 个编辑器命令 + **35 个 AI 工具**
 - 两种 AI 接入方式：**MCP Server**（stdio）与 **语言模型工具**（`vscode.lm.registerTool`）
 
 ---
@@ -209,7 +209,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 
 | 路径 | 实现方式 | 适用客户端 |
 | --- | --- | --- |
-| **MCP Server** | 独立 stdio 子进程，暴露 27 个工具 | CodeBuddy、VS Code 及任意 MCP 客户端 |
+| **MCP Server** | 独立 stdio 子进程，暴露 35 个工具 | CodeBuddy、VS Code 及任意 MCP 客户端 |
 | **语言模型工具** | `vscode.lm.registerTool`，常驻扩展宿主 | VS Code 系 |
 
 ### MCP Server：按客户端选接入方式
@@ -337,7 +337,7 @@ npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 
 ---
 
-## 五、AI 工具清单（27 个）
+## 五、AI 工具清单（35 个）
 
 未显式传 `owner` / `repo` 时，会从当前工作区的 **git origin 远端** 自动推断仓库，
 所以在 Gitea 仓库里直接提问即可，不必每次重复仓库名。
@@ -348,6 +348,7 @@ npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 | Issue（6） | `gitea_list_issues`、`gitea_get_issue`、`gitea_create_issue`、`gitea_update_issue`、`gitea_comment_issue`、`gitea_list_issue_comments` |
 | Pull Request（7） | `gitea_list_pulls`、`gitea_get_pull`、`gitea_get_pull_diff`、`gitea_list_pull_files`、`gitea_create_pull`、`gitea_merge_pull`、`gitea_review_pull` |
 | 账号 / 通知（4） | `gitea_get_current_user`、`gitea_list_orgs`、`gitea_list_notifications`、`gitea_mark_notifications_read` |
+| Gitea Actions（8） | `gitea_list_workflows`、`gitea_list_action_runs`、`gitea_get_action_run`、`gitea_get_job_logs`、`gitea_list_artifacts`、`gitea_dispatch_workflow`、`gitea_rerun_action`、`gitea_set_workflow_enabled` |
 
 `gitea_create_issue` / `gitea_update_issue` 的 `labels` 接受**标签名称**（大小写不敏感），
 扩展会自动解析为 Gitea 需要的标签 ID，无法识别的标签会被忽略并在结果中说明。
