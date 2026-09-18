@@ -63,18 +63,39 @@ shasum -a 256 -c SHA256SUMS
 
 ### 更新扩展
 
-扩展已同时上架 **Open VSX** 与 **VS Code Marketplace**，**两个渠道都由编辑器自动更新**，
-无需任何手动操作，扩展内也不再内置自己的更新检查。
+分两种情况：
 
-> **为什么不做内置更新检查**：那会是第二个「最新版本」口径 —— 扩展比对 GitHub Releases，
-> 而编辑器比对市场，两者不同步时会给出互相矛盾的提示，反而误导用户。
-> 既然两条分发通道都由编辑器接管，就只保留一个来源。
+| 安装方式 | 更新方式 |
+| --- | --- |
+| **从扩展市场安装**（推荐） | 编辑器**自动更新**，无需任何操作 |
+| **手动装 `.vsix`** | 编辑器**不跟踪**这类安装，不会自动更新 → 靠扩展内置的检查兜底 |
+
+内置检查（主要服务第二种情况）：
+
+- 激活后每天自动查一次 GitHub Releases（配置项 `gitea.checkUpdates`，默认开启）
+- 也可随时手动执行 **`Gitea: 检查更新`**
+- 发现新版本时可查看变更，或下载 `.vsix`（下载后建议按「安装」一节核对 `SHA256SUMS`）
+
+**它靠「版本比对」而非「渠道探测」来避免打扰市场用户。** 这一点是实测结论：
+
+VS Code **没有公开 API** 能判断扩展的安装来源；而内部的 `extensions.json` 里
+`metadata.source` 实测**一律为 `gallery`** —— 两个客户端共 54 个扩展全部如此，
+**包括明确用 `--install-extension <vsix>` 安装的那一个**。所以渠道不可检测。
+
+改用版本比对达到同样效果，且不依赖任何探测：
+
+- 市场安装的：编辑器把它更新到最新后，检查自然得出「已是最新」→ **静默**
+- 手动安装的：版本一直停在旧的 → **提示**
+
+又因为 CI 在**同一个 job** 里把同一个版本发到两个市场与 GitHub Releases，
+GitHub 不会系统性领先市场，因此不存在「两条通道给出矛盾结论」的问题。
+
+> **别混淆这两个命令**：
+> `Gitea: 检查更新` 查的是**扩展自身**的版本；
+> `Gitea: 检查版本兼容性` 查的是**服务端 Gitea** 的版本与本扩展已核对版本的差异。
 >
-> **从 Releases 手动装 `.vsix` 的例外**：这类安装不被编辑器跟踪，**不会自动更新**。
-> 需要的话请改用市场安装。
-
-> **别混淆**：`Gitea: 检查版本兼容性` 查的是**服务端 Gitea** 的版本与本扩展已核对版本的差异，
-> 与扩展自身是否最新无关。
+> 自动检查的节流：「上次检查时间」**只在请求成功后写入**（网络抖动不会白等一天）；
+> 同一个新版本只提示一次；除手动触发外，任何失败都只写日志、不打扰用户。
 
 ### 版本兼容性校验
 
@@ -169,7 +190,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | 分类 | 命令 |
 | --- | --- |
 | 认证 | `Gitea: 设置访问令牌`、`Gitea: 清除访问令牌`、`Gitea: 显示当前登录用户`、`Gitea: 检查版本兼容性` |
-| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志` |
+| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志`、`Gitea: 检查更新` |
 | 仓库 | `Gitea: 克隆仓库到工作区`、`Gitea: 新建仓库`、`Gitea: 新建分支` |
 | Issue / PR | `Gitea: 新建 Issue`、`Gitea: 打开 Issue 详情面板`、`Gitea: 回复 Issue / Pull Request`、`Gitea: 在详情面板中回复`、`Gitea: 关闭 / 重新打开` |
 | Pull Request | `Gitea: 新建 Pull Request`、`Gitea: 打开 Pull Request 详情面板`、`Gitea: 查看 Pull Request 差异`、`Gitea: 合并 Pull Request`、`Gitea: 检出 Pull Request 分支` |
@@ -343,6 +364,7 @@ npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 | `gitea.enableMcpServer` | `true` | 是否启用内置 MCP Server |
 | `gitea.enableLanguageModelTools` | `true` | 是否注册语言模型工具 |
 | `gitea.writeCodeBuddyConfigOnActivate` | `false` | 激活时自动写入**工作区** `.codebuddy/mcp.json`（仅当文件不存在时） |
+| `gitea.checkUpdates` | `true` | 每天检查一次**扩展自身**的新版本（给手动装 `.vsix` 的用户兜底，见「更新扩展」） |
 
 > 另有 `gitea.ignoreCertificates`，是 `gitea.verifyTls` 的反向兼容别名（已标记废弃），
 > 仅为兼容旧配置保留，新配置请一律使用 `gitea.verifyTls`。

@@ -18,6 +18,7 @@ import { logDebug, logError, logInfo, logWarn, disposeLog } from './vscode/logge
 import { autoWriteCodeBuddyConfig, repairCodeBuddyUserMcpConfig } from './vscode/mcpConfigWriter';
 import { GiteaService } from './vscode/service';
 import { StatusBarController } from './vscode/statusBar';
+import { autoCheckForUpdates } from './vscode/updateChecker';
 import { IssuesProvider } from './vscode/views/issuesProvider';
 import { NotificationsProvider } from './vscode/views/notificationsProvider';
 import { PullsProvider } from './vscode/views/pullsProvider';
@@ -65,9 +66,15 @@ export function activate(context: vscode.ExtensionContext): void {
   // 后台核对服务端版本：仅在版本与上次告警的不同时弹窗，因此不会反复打扰
   void checkCompatibilityOnActivate(context, service);
 
-  // 不再内置「检查扩展自身更新」：扩展已同时上架 Open VSX 与 VS Code Marketplace，
-  // 两个渠道都由编辑器自动更新。内置一套比对 GitHub Releases 的检查只会产生
-  // 第二个「最新版本」口径，与市场不同步时反而误导用户。
+  // 更新检查是「非市场安装」的兜底：从市场装的由编辑器自动更新，
+  // 而手动装 .vsix 的不会被编辑器跟踪，永远收不到提醒。
+  // 不依赖渠道探测（VS Code 无此 API，且 extensions.json 的 source 一律为 gallery），
+  // 而是靠版本比对区分：编辑器更新过 → 已是最新 → 静默；版本落后 → 提示。
+  // 内部已做「每天最多一次 + 同一版本只提示一次 + 失败静默」的节流。
+  void autoCheckForUpdates(context).catch((error) => {
+    logWarn('自动检查扩展更新失败', error);
+  });
+
   logInfo('Gitea Toolkit 激活完成');
 }
 

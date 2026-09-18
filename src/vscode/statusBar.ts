@@ -80,6 +80,7 @@ export class StatusBarController implements vscode.Disposable {
         { label: '$(refresh) 刷新全部视图', command: 'gitea.refresh' },
         { label: '$(account) 显示当前登录用户', command: 'gitea.showCurrentUser' },
         { label: '$(versions) 检查版本兼容性', command: 'gitea.checkCompatibility' },
+        { label: '$(cloud-download) 检查扩展更新', command: 'gitea.checkForUpdates' },
         { label: '$(key) 设置访问令牌', command: 'gitea.setToken' },
         { label: '$(clippy) 复制 MCP 配置', command: 'gitea.copyMcpConfig' },
         { label: '$(tools) 写入 CodeBuddy MCP 配置', command: 'gitea.writeCodeBuddyUserMcpConfig' },

@@ -10,6 +10,7 @@ import { createNavigationCommands } from './navigationCommands';
 import { createNotificationCommands } from './notificationCommands';
 import { createPullCommands } from './pullCommands';
 import { createRepoCommands } from './repoCommands';
+import { createUpdateCommands } from './updateCommands';
 import type { CommandDeps, CommandMap } from './types';
 
 export type { CommandDeps, CommandMap, ProviderBundle } from './types';
@@ -28,6 +29,7 @@ export function createCommands(deps: CommandDeps): CommandMap {
     ...createPullCommands(deps),
     ...createNotificationCommands(deps),
     ...createMcpCommands(deps),
+    ...createUpdateCommands(deps),
   };
 }
 
