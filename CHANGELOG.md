@@ -83,6 +83,16 @@
   首次必须先创建），所以 CI 里那次 npm 步骤显示为跳过、而非发布成功；
   从 0.9.0 起 `npx -y @echo-note/gitea-toolkit-mcp` 已可直接使用。
 
+- **根 README 补上「服务介绍」与「服务配置」两节**（标题名就是平台提取用的字段名）。
+  把本项目提交到 MCP 广场（魔搭 ModelScope 等）时，「从 GitHub 仓库快速创建」会从仓库根
+  README 里按名字提取这两段，并把它们当**强制校验字段** —— 解析不到就直接中断。
+  README 里原本虽有 `mcpServers` 的 JSON，却没有任何标注，能否被提取完全看提取器的理解。
+  新增 `npm run check:mcp-manifest`（已接进 `npm run ci`）守住：两节存在且非空、
+  服务配置是合法 STDIO（`command` 只能是 `npx` / `uvx`、args 里要有包名且与真实包名一致、
+  不得有本地绝对路径、JSON 不得带注释）、env 里有 `GITEA_TOKEN`。
+  已用**正反 8 个场景**验证：正向通过；标题改名 / command 非法 / JSON 带注释 / 包名写错 /
+  缺 env / 缺 json 代码块 / 塞本地绝对路径，各自都能拦住。
+
 > 为什么这些文档修正值得单独发一个版本：**npm 页面上的 README 与终端里的 `--help`
 > 都只随发布更新** —— 0.9.0 的包页与已下载的 tarball 里仍是上述过时内容。
 

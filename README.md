@@ -345,6 +345,39 @@ npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea
 }
 ```
 
+### 服务介绍
+
+> ⚠️ 本节与下一节的**标题名是平台要求的字段名，不要改**。把本项目提交到 MCP 广场
+> （魔搭 ModelScope 等）时，「从 GitHub 仓库快速创建」会从仓库根 README 里按名字提取
+> 「服务介绍」与「服务配置」，**解析不到会直接中断快速创建**。`npm run check:mcp-manifest`
+> 会守住这两段（已接进 `npm run ci`）。
+
+Gitea Toolkit MCP 把**自建 Gitea** 的仓库、Issue、Pull Request、通知与 Gitea Actions 能力
+暴露给任意 MCP 客户端（CodeBuddy / Claude Desktop / Cursor 等）：列出与检索仓库、读写文件、
+查看提交历史、创建与更新 Issue、创建 / 评审 / 合并 PR、查 CI 运行记录与作业日志、管理通知，
+共 **35 个工具**。
+
+> 它必须连到**你自己的** Gitea 实例（地址 + 访问令牌）才能工作 ——
+> 因此适合**本地运行**，不适合由平台托管部署。
+
+### 服务配置
+
+```json
+{
+  "mcpServers": {
+    "gitea": {
+      "command": "npx",
+      "args": ["-y", "@echo-note/gitea-toolkit-mcp@latest", "--url", "https://gitea.example.com"],
+      "env": { "GITEA_TOKEN": "你的访问令牌" }
+    }
+  }
+}
+```
+
+把 `--url` 换成你的实例地址、`GITEA_TOKEN` 换成访问令牌即可。包名带 `@latest`，
+这样每次接入都拿到最新版；想用 Python 实现就把 `command` 改成 `uvx`、
+包名改成 `gitea-toolkit-mcp@latest`（详见 [`python/README.md`](python/README.md)）。
+
 ### 语言模型工具
 
 扩展注册 **27 个语言模型工具**（`giteaToolkit_gitea_*`），
