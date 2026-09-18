@@ -15,6 +15,17 @@ apikey.*
 secrets.json
 *.pem
 *.key
+
+# Python（python/ 独立包）
+# 起因：首次提交 Python 版时，`git add -A` 把 __pycache__/*.pyc 一起提交了 —— 构建产物不入库。
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+dist/
+build/
 *.log
 .eslintcache
 
