@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gitea-toolkit-mcp"
+# 版本由 scripts/bump-version.mjs 与根 package.json / MCP npm 包同步
+version = "0.9.1"
+description = "Gitea 的 MCP 工具服务（stdio）：仓库 / Issue / Pull Request / 通知 / Gitea Actions 的读写。与 gitea-toolkit 扩展同源，任何 MCP 客户端均可接入。"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "echo-note" }]
+keywords = ["mcp", "gitea", "model-context-protocol", "ai", "agent"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Version Control",
+]
+dependencies = [
+  # v2 起 FastMCP 更名为 MCPServer；<2 是 v1，两代 API 不兼容，故锁上界
+  "mcp>=2.2,<3",
+  # SDK v2 自身依赖 httpx2，本包也用它做 Gitea API 调用 —— 不额外引入 httpx，避免两个 HTTP 栈
+  "httpx2>=2.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/Echo-Note/gitea-toolkit"
+Repository = "git+https://github.com/Echo-Note/gitea-toolkit.git"
+Issues = "https://github.com/Echo-Note/gitea-toolkit/issues"
+
+[project.scripts]
+# uvx / pipx / npx 之外的一条通路：`uvx gitea-toolkit-mcp --help`
+gitea-toolkit-mcp = "gitea_toolkit_mcp.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gitea_toolkit_mcp"]
