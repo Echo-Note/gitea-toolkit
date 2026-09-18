@@ -464,12 +464,18 @@ jobs:
             exit 0
           fi
 
-          # **凭据类失败不阻断发版**：那是配置问题，不是代码问题。
-          # 这条规则是踩出来的 —— 令牌缺「绕过 2FA」导致 403 时，两个扩展市场其实已经发布
-          # 成功，却因为 release job needs 本 job 而一直建不出 GitHub Release，整条流水线卡住。
-          # 现在降级为「醒目提示 + 跳过」，配置好凭据后重跑即可补齐（发布步骤本身是幂等的）。
-          if grep -qiE "ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication" "${LOG}"; then
-            echo "::warning title=npm 凭据未就绪 → 跳过 npm 发布::$(grep -m1 -iE 'ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication' "${LOG}" | cut -c1-220)"
+          # **配置/凭据类失败不阻断发版**：那是仓库配置问题，不是代码问题。
+          # 这条规则是踩出来的 —— 首次发布连撞两次：先因令牌缺「绕过 2FA」得到 403，
+          # 后因**包在 npm 上尚不存在**得到 404。两次两个扩展市场都已发布成功，
+          # 却因为 release job needs 本 job 而一直建不出 GitHub Release，整条流水线卡住。
+          # 现在降级为「醒目提示 + 跳过」，配置好后重跑即可补齐（发布步骤是幂等的）。
+          if grep -qiE "ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication|E404|Not found|is not in this registry" "${LOG}"; then
+            HIT="$(grep -m1 -iE 'ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication|E404|Not found|is not in this registry' "${LOG}" | cut -c1-200)"
+            if grep -qiE "E404|Not found|is not in this registry" "${LOG}"; then
+              echo "::warning title=npm 包尚不存在 → 跳过 npm 发布::${NAME} 在 npm 上还没创建过（scope @echo-note 存在，但该包 404）。可信发布要求包已存在，所以**首次发布必须手动做一次**：cd packages/mcp-server && npm publish --access public（会提示输入 6 位 OTP）。发布成功后本步骤会自动跳过（幂等），此后即可改用 OIDC。原始错误：${HIT}"
+            else
+              echo "::warning title=npm 凭据未就绪 → 跳过 npm 发布::${HIT}"
+            fi
             echo "result=skipped" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -687,11 +693,22 @@ jobs:
     steps:
       - name: 创建或更新失败 Issue
         uses: actions/github-script@v9
+        env:
+          # 供脚本里调用 gh CLI 取失败日志（github-script 自身的 API 客户端走 github-token，
+          # 但子进程读的是环境变量，必须显式给）
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           script: |
+            const { execSync } = require('child_process');
             const LABEL = 'ci-failure';
+            // 正文里的固定标记：用来**认领**本流程自己建的 issue。
+            // 只靠 label 不够稳妥（label 可被别人加或删），标记则一定是我们写的。
+            const MARKER = '<!-- ci-failure-report -->';
             const { owner, repo } = context.repo;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const branch = context.ref.replace('refs/heads/', '');
+            const sha = (context.sha || '').slice(0, 7);
+            const commitUrl = `${context.serverUrl}/${owner}/${repo}/commit/${context.sha}`;
 
             // 1) 确保 label 存在（给不存在的 label 建 issue 会直接报错）
             try {
@@ -710,7 +727,7 @@ jobs:
               }
             }
 
-            // 2) 收集失败的 job。
+            // 2) 失败的 job 与失败步骤。
             //    拿不到详情不应该让「报告失败」这件事本身也失败，因此降级为提示看日志。
             let failedList = '- 未能获取失败 job 详情，请查看运行日志';
             try {
@@ -722,20 +739,73 @@ jobs:
               });
               const failed = jobs.filter((job) => job.conclusion === 'failure');
               if (failed.length > 0) {
-                failedList = failed.map((job) => `- [\`${job.name}\`](${job.html_url})`).join('\n');
+                failedList = failed
+                  .map((job) => {
+                    const steps = (job.steps || [])
+                      .filter((step) => step.conclusion === 'failure')
+                      .map((step) => `\`${step.name}\``)
+                      .join('、');
+                    return `- [\`${job.name}\`](${job.html_url})${steps ? ` —— 失败步骤：${steps}` : ''}`;
+                  })
+                  .join('\n');
               }
             } catch (error) {
               core.warning(`获取失败 job 详情出错：${error.message}`);
             }
 
-            const sha = (context.sha || '').slice(0, 7);
+            // 3) 错误详情：关键错误摘要 + 折叠的完整失败日志。
+            //    为什么必须带上：用户反馈「构建失败的 issue 没有错误详情」—— 只写「某 job 失败」
+            //    等于让人再点进日志里翻。取日志用 gh CLI（runner 预装，不引入第三方 action），
+            //    且放在同一个动作里；取不到也不影响「报告失败」本身。
+            let logSection;
+            try {
+              const raw = execSync(
+                `gh run view ${context.runId} --repo ${owner}/${repo} --log-failed`,
+                { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
+              );
+              if (raw && raw.trim()) {
+                // 去掉 gh 输出前缀里的时间戳，保留 job / 步骤名（那是有用信息）
+                const lines = raw
+                  .split('\n')
+                  .map((line) => line.replace(/^([^\t]*\t[^\t]*\t)?\d{4}-\d{2}-\d{2}T[\d:.]+Z /, ''));
+                // 「关键错误」优先取我们自己打的 ::error 注解 —— 那是写给人看的一句话结论；
+                // 没有再退回含 error / failed 的行
+                const annotated = lines.filter((line) => line.includes('::error'));
+                const fallback = lines.filter((line) => /\b(error|Error|ERROR|failed|Failure|Exception)\b/.test(line));
+                const picked = (annotated.length ? annotated : fallback).slice(-20);
+                const full = lines.join('\n');
+                const MAX = 55000; // issue 正文上限 65536，留出余量
+                const clipped = full.length > MAX;
+                logSection = [
+                  '### 关键错误',
+                  '',
+                  '```text',
+                  picked.length ? picked.join('\n') : '（日志里没有明显的错误行，见下方完整日志）',
+                  '```',
+                  '',
+                  `<details><summary>完整失败日志${clipped ? '（过长，仅保留末尾）' : ''}</summary>`,
+                  '',
+                  '````text',
+                  clipped ? full.slice(-MAX) : full,
+                  '````',
+                  '',
+                  '</details>',
+                  '',
+                ].join('\n');
+              } else {
+                logSection = '### 关键错误\n\n（本次未取到日志，请查看运行页面）\n';
+              }
+            } catch (error) {
+              logSection = `### 关键错误\n\n（取日志失败：${error.message}。请查看运行页面）\n`;
+            }
+
             const body = [
               '## 主干构建失败',
               '',
               '| 项目 | 值 |',
               '| --- | --- |',
-              `| 分支 | \`${context.ref.replace('refs/heads/', '')}\` |`,
-              `| 提交 | [\`${sha}\`](${context.serverUrl}/${owner}/${repo}/commit/${context.sha}) |`,
+              `| 分支 | \`${branch}\` |`,
+              `| 提交 | [\`${sha}\`](${commitUrl}) |`,
               `| 触发 | ${context.eventName} · @${context.actor} |`,
               `| 运行 | [#${context.runNumber}](${runUrl}) |`,
               '',
@@ -743,6 +813,7 @@ jobs:
               '',
               failedList,
               '',
+              logSection,
               '### 本地复现',
               '',
               '```bash',
@@ -753,34 +824,52 @@ jobs:
               '',
               '### 处理说明',
               '',
-              `修复后重新推送到 \`main\`，CI 通过时该 issue 会被**自动关闭**。`,
+              `修复后重新推送到 \`${branch}\`，CI 通过时该 issue 会被**自动关闭**。`,
               '',
-              `<!-- ci-failure-report -->`,
+              '> 本 issue 由 CI 自动维护：**同一分支只保留这一个** —— 再次失败时更新上面的正文',
+              '> 并追加一条时间线评论，不会新建第二个；恢复时自动关闭。',
+              '',
+              MARKER,
             ].join('\n');
 
-            // 3) 幂等：已有未关闭的失败 issue 就追加评论，而不是再建一个
-            const existing = await github.rest.issues.listForRepo({
+            // 4) 认领既有 issue：优先按正文标记找，其次退回按 label 找。
+            //    这就是「有多个失败 issue 怎么办」的答案 —— 不再新建第二个。
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
               state: 'open',
               labels: LABEL,
-              per_page: 5,
+              per_page: 100,
             });
+            const target = openIssues.find((issue) => (issue.body || '').includes(MARKER)) || openIssues[0];
 
-            if (existing.data.length > 0) {
-              const issue = existing.data[0];
+            if (target) {
+              // 正文更新为**本次**失败的详情。否则永远显示第一次的详情，越看越对不上。
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: target.number,
+                body,
+              });
+              // 时间线：保留「第几次失败」的历史（正文只反映最新一次）
               await github.rest.issues.createComment({
                 owner,
                 repo,
-                issue_number: issue.number,
-                body: `### 再次失败\n\n${body}`,
+                issue_number: target.number,
+                body: [
+                  '### 再次失败',
+                  '',
+                  `- 运行：[#${context.runNumber}](${runUrl})`,
+                  `- 提交：[\`${sha}\`](${commitUrl})`,
+                  '- 正文已更新为本次失败的详情。',
+                ].join('\n'),
               });
-              core.info(`已在 #${issue.number} 追加失败记录`);
+              core.info(`已更新 issue #${target.number}（正文 + 时间线评论）`);
             } else {
               const created = await github.rest.issues.create({
                 owner,
                 repo,
-                title: '[CI] main 分支构建失败',
+                title: `[CI] ${branch} 分支构建失败`,
                 body,
                 labels: [LABEL],
               });
@@ -804,23 +893,40 @@ jobs:
         with:
           script: |
             const LABEL = 'ci-failure';
+            const MARKER = '<!-- ci-failure-report -->';
             const { owner, repo } = context.repo;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const sha = (context.sha || '').slice(0, 7);
+            const commitUrl = `${context.serverUrl}/${owner}/${repo}/commit/${context.sha}`;
 
             const open = await github.paginate(github.rest.issues.listForRepo, {
               owner,
               repo,
               state: 'open',
               labels: LABEL,
-              per_page: 20,
+              per_page: 100,
             });
 
-            for (const issue of open) {
+            // 只认领本流程自己建的（正文带标记）—— 避免误关别人手工打了同一个 label 的 issue
+            const mine = open.filter((issue) => (issue.body || '').includes(MARKER));
+            const targets = mine.length ? mine : open;
+
+            // 「修的是哪一次失败」怎么确定：正文里记录的提交就是**最近一次失败**的提交，
+            // 下面这条评论补上**修复它的**提交 —— 两者落在同一条时间线上，对应关系是显式的。
+            // 若历史上遗留了多个失败 issue（旧逻辑会重复创建），这里会逐个关闭并各自说明。
+            for (const issue of targets) {
               await github.rest.issues.createComment({
                 owner,
                 repo,
                 issue_number: issue.number,
-                body: `✅ CI 已恢复，自动关闭该 issue。\n\n通过运行：[#${context.runNumber}](${runUrl})`,
+                body: [
+                  '✅ CI 已恢复，自动关闭该 issue。',
+                  '',
+                  `- 恢复运行：[#${context.runNumber}](${runUrl})`,
+                  `- 修复提交：[\`${sha}\`](${commitUrl})`,
+                  '',
+                  '（本 issue 正文里记录的是最近一次失败的信息，可与上面的修复提交对照。）',
+                ].join('\n'),
               });
               await github.rest.issues.update({
                 owner,
@@ -831,6 +937,6 @@ jobs:
               core.info(`已关闭 #${issue.number}`);
             }
 
-            if (open.length === 0) {
+            if (targets.length === 0) {
               core.info('没有遗留的失败 issue');
             }
