@@ -11,6 +11,7 @@ import {
   actionStateIcon,
   branchIcon,
   issueIcon,
+  messageIcons,
   pullIcon,
   repoIcon,
   workflowIcon,
@@ -40,7 +41,8 @@ export type GiteaNodeKind =
   | 'message'
   | 'actionWorkflow'
   | 'actionRun'
-  | 'actionJob';
+  | 'actionJob'
+  | 'more';
 
 /** Issue 节点携带的数据。 */
 export interface IssueNodePayload {
@@ -162,14 +164,24 @@ export function createRepoNode(repo: RepoNodePayload, loadChildren: () => Promis
  * @param label 分组名
  * @param iconPath 分组图标（纯数据，内部转换）
  * @param loadChildren 子节点加载器
+ * @param options 可选项：`expanded` 让分组默认展开（用于「当前仓库所在的分组」）
  * @returns 节点
  */
 export function createGroupNode(
   label: string,
   iconPath: IconSpec,
   loadChildren: () => Promise<GiteaNode[]>,
+  options: { expanded?: boolean } = {},
 ): GiteaNode {
-  const node = new GiteaNode('group', label, vscode.TreeItemCollapsibleState.Collapsed, undefined, loadChildren);
+  const node = new GiteaNode(
+    'group',
+    label,
+    options.expanded
+      ? vscode.TreeItemCollapsibleState.Expanded
+      : vscode.TreeItemCollapsibleState.Collapsed,
+    undefined,
+    loadChildren,
+  );
   node.iconPath = toThemeIcon(iconPath);
   return node;
 }
@@ -290,6 +302,41 @@ export function createActionJobNode(payload: ActionJobNodePayload): GiteaNode {
     `**${payload.name}** \`${payload.status ?? ''}\` / \`${payload.conclusion ?? ''}\`\n\n点击查看日志`,
   );
   node.command = { command: 'gitea.showJobLogs', title: '查看日志', arguments: [node] };
+  return node;
+}
+
+/** 「加载更多」节点携带的数据。 */
+export interface LoadMoreNodePayload {
+  /** 提供者键，对应 `ProviderBundle` 的字段名。 */
+  provider: 'repos' | 'issues' | 'pulls' | 'notifications';
+  /** 该列表在提供者内的唯一标识。 */
+  listKey: string;
+  /** 本次要追加的条数。 */
+  step: number;
+  /** 已加载条数，仅用于展示。 */
+  loaded: number;
+}
+
+/**
+ * 创建「加载更多」节点。
+ *
+ * 与普通提示节点的区别：它带**可点击的命令**，点击后由 `gitea.loadMore` 提升该列表的
+ * 展示上限并刷新，从而突破「一次只能拉这么多」的限制。
+ * @param payload 加载更多所需的数据
+ * @returns 节点
+ */
+export function createMoreNode(payload: LoadMoreNodePayload): GiteaNode {
+  const node = new GiteaNode(
+    'more',
+    `已显示 ${payload.loaded} 条，点击加载更多…`,
+    vscode.TreeItemCollapsibleState.None,
+    payload,
+  );
+  node.iconPath = new vscode.ThemeIcon(messageIcons.more);
+  node.tooltip = new vscode.MarkdownString(
+    '点击追加下一批。\n\n也可以调大 `gitea.pageSize` 改变每次加载的条数。',
+  );
+  node.command = { command: 'gitea.loadMore', title: '加载更多', arguments: [node] };
   return node;
 }
 

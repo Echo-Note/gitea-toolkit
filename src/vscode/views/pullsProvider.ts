@@ -5,7 +5,14 @@ import { readSettings } from '../config';
 import type { GiteaService } from '../service';
 import { BaseTreeProvider } from './baseProvider';
 import { pullGroupIcons, type IconSpec } from './icons';
-import { createGroupNode, createMessageNode, createPullNode, GiteaNode, type PullNodePayload } from './nodes';
+import {
+  createGroupNode,
+  createMessageNode,
+  createMoreNode,
+  createPullNode,
+  GiteaNode,
+  type PullNodePayload,
+} from './nodes';
 
 /** 分组定义。 */
 interface PullGroup {
@@ -42,17 +49,18 @@ export class PullsProvider extends BaseTreeProvider {
   private async loadGroup(group: PullGroup): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
     const settings = readSettings();
+    const key = `pull-group:${group.label}`;
     const result = await operations.issues.list({
       ...group.query,
       state: 'open',
       type: 'pulls',
-      limit: settings.pageSize,
+      limit: this.capOf(key, settings.pageSize),
     });
 
     if (result.items.length === 0) {
       return [createMessageNode('没有匹配的 Pull Request。', group.iconPath().id)];
     }
-    return result.items.map((issue) => {
+    const nodes = result.items.map((issue) => {
       const owner = issue.repository?.owner?.login ?? issue.repository?.full_name.split('/')[0] ?? '';
       const repo = issue.repository?.name ?? '';
       const payload: PullNodePayload = {
@@ -67,5 +75,16 @@ export class PullsProvider extends BaseTreeProvider {
       };
       return createPullNode(issue.title, payload, `${owner}/${repo}`);
     });
-  }
+    if (result.pageInfo.hasNextPage) {
+      nodes.push(
+        createMoreNode({
+          provider: 'pulls',
+          listKey: key,
+          step: settings.pageSize,
+          loaded: result.items.length,
+        }),
+      );
+    }
+    return nodes;
+    }
 }

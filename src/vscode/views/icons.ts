@@ -76,6 +76,8 @@ export const groupIcons = {
   issues: (): IconSpec => icon('issue-opened', COLOR.open),
   /** 打开的 PR 分组。 */
   pulls: (): IconSpec => icon('git-pull-request', COLOR.open),
+  /** 组织（按 owner 分组仓库）。 */
+  owners: (): IconSpec => icon('organization'),
 };
 
 /**

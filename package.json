@@ -2,7 +2,7 @@
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
   "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知 / Actions，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "publisher": "echo-note",
   "license": "MIT",
   "repository": {
@@ -56,7 +56,9 @@
         "gitea.pageSize": {
           "type": "number",
           "default": 50,
-          "description": "列表类接口的分页大小。"
+          "minimum": 1,
+          "maximum": 200,
+          "description": "列表类视图**初始**展示多少条。若列表还有更多，底部会出现「加载更多」条目，点击即可逐批追加 —— 所以没有硬上限，不必为了「看全」而不断调大这个值。Gitea 服务端单次请求有 max_response_items（默认 50）上限，本扩展会自动翻页补齐。"
         },
         "gitea.ignoreCertificates": {
           "type": "boolean",
@@ -244,6 +246,24 @@
         "icon": "$(output)"
       },
       {
+        "command": "gitea.searchRepos",
+        "title": "Gitea: 搜索仓库",
+        "category": "Gitea",
+        "icon": "$(search)"
+      },
+      {
+        "command": "gitea.clearRepoSearch",
+        "title": "Gitea: 清除仓库搜索",
+        "category": "Gitea",
+        "icon": "$(close)"
+      },
+      {
+        "command": "gitea.loadMore",
+        "title": "Gitea: 加载更多",
+        "category": "Gitea",
+        "icon": "$(ellipsis)"
+      },
+      {
         "command": "gitea.showJobLogs",
         "title": "Gitea: 查看作业日志",
         "category": "Gitea",
@@ -304,14 +324,24 @@
     "menus": {
       "view/title": [
         {
+          "command": "gitea.searchRepos",
+          "when": "view == gitea.repos",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gitea.clearRepoSearch",
+          "when": "view == gitea.repos && gitea.repoFilterActive",
+          "group": "navigation@2"
+        },
+        {
           "command": "gitea.refresh",
           "when": "view == gitea.repos || view == gitea.issues || view == gitea.pulls || view == gitea.notifications",
-          "group": "navigation@1"
+          "group": "navigation@3"
         },
         {
           "command": "gitea.createRepo",
           "when": "view == gitea.repos",
-          "group": "navigation@2"
+          "group": "navigation@4"
         },
         {
           "command": "gitea.createIssue",

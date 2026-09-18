@@ -1,12 +1,19 @@
 /**
- * 「仓库」视图：仓库列表 → 分支 / 打开的 Issue / 打开的 Pull Request / Actions。
+ * 「仓库」视图：组织分组 → 仓库 → 分支 / 打开的 Issue / 打开的 Pull Request / Actions。
+ *
+ * 三种形态：
+ *   - **浏览**（默认）：按 owner 分组；含当前工作区仓库的那组置顶并自动展开
+ *   - **搜索**：走服务端 `/repos/search`，结果平铺（跨组织，分组反而妨碍扫读）
+ *   - **加载更多**：见基类的 `capOf` / `raiseCap`
  */
 import * as vscode from 'vscode';
+import type { GiteaRepository } from '../../core/types';
 import { branchWebUrl, runWebUrl, workflowWebUrl } from '../../core/urls';
 import { readSettings } from '../config';
 import type { GiteaService } from '../service';
 import { BaseTreeProvider } from './baseProvider';
 import { actionIcons, groupIcons, messageIcons } from './icons';
+import { repoBadge } from './repoBadge';
 import {
   createActionJobNode,
   createActionRunNode,
@@ -15,6 +22,7 @@ import {
   createGroupNode,
   createIssueNode,
   createMessageNode,
+  createMoreNode,
   createPullNode,
   createRepoNode,
   GiteaNode,
@@ -30,44 +38,186 @@ export class ReposProvider extends BaseTreeProvider {
     super(service);
   }
 
+  /** 当前生效的仓库搜索关键词（由 `gitea.searchRepos` / `gitea.clearRepoSearch` 维护）。 */
+  private repoFilter: string | undefined;
+
+  /**
+   * 设置仓库搜索关键词并刷新。
+   * @param filter 关键词；空串或仅空白表示清除
+   */
+  public setRepoFilter(filter: string | undefined): void {
+    const trimmed = filter?.trim();
+    this.repoFilter = trimmed && trimmed.length > 0 ? trimmed : undefined;
+    // 供 package.json 的 `when` 使用：只在过滤生效时显示「清除搜索」按钮
+    void vscode.commands.executeCommand('setContext', 'gitea.repoFilterActive', this.repoFilter !== undefined);
+    this.refresh();
+  }
+
+  /** 当前搜索关键词。 */
+  public getRepoFilter(): string | undefined {
+    return this.repoFilter;
+  }
+
   /** @inheritdoc */
   protected async getRootNodes(): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
     const settings = readSettings();
-    const result = await operations.repos.list({ mine: true, limit: settings.pageSize });
+    const filter = this.repoFilter;
+    // 搜索与浏览是两套结果集，各自记「加载更多」的上限，否则互相干扰
+    const key = filter ? `repos:search:${filter}` : 'repos:mine';
+    const limit = this.capOf(key, settings.pageSize);
+    const result = filter
+      ? await operations.repos.list({ search: filter, limit })
+      : await operations.repos.list({ mine: true, limit });
 
     if (result.items.length === 0) {
-      return [
-        createMessageNode('当前账号下没有仓库，点击右侧图标新建。', messageIcons.noRepo, {
-          command: 'gitea.createRepo',
-          title: '新建仓库',
-        }),
-      ];
+      return filter
+        ? [
+            createMessageNode(
+              `没有匹配「${filter}」的仓库。注意 Gitea 只按仓库名 / owner/repo 搜索，不支持只搜组织名`,
+              messageIcons.noRepo,
+              { command: 'gitea.clearRepoSearch', title: '清除搜索' },
+            ),
+          ]
+        : [
+            createMessageNode('当前账号下没有仓库，点击右侧图标新建。', messageIcons.noRepo, {
+              command: 'gitea.createRepo',
+              title: '新建仓库',
+            }),
+          ];
     }
 
-    const nodes = result.items.map((repo) =>
-      createRepoNode(
-        {
-          owner: repo.owner?.login ?? repo.full_name.split('/')[0],
-          name: repo.name,
-          fullName: repo.full_name,
-          defaultBranch: repo.default_branch,
-          htmlUrl: repo.html_url,
-          cloneUrl: repo.clone_url,
-          // 以下标记只影响图标，用于一眼区分私有 / 归档 / Fork / 空仓库
-          private: repo.private,
-          archived: repo.archived,
-          fork: repo.fork,
-          empty: repo.empty,
-        },
-        () => this.loadRepoChildren(repo.owner?.login ?? repo.full_name.split('/')[0], repo.name),
-      ),
-    );
+    const current = await this.service.getDefaultRepo();
+    const currentFullName = current ? `${current.owner}/${current.repo}` : undefined;
+
+    // 搜索结果是跨组织的，平铺更好扫读；按组织分组只在浏览模式有意义
+    const nodes = filter
+      ? result.items.map((repo) => this.createRepoEntry(repo, currentFullName))
+      : this.groupByOwner(result.items, currentFullName);
+
+    // 过滤条件必须看得见，否则「怎么只剩几个仓库」会让人困惑
+    if (filter) {
+      nodes.unshift(
+        createMessageNode(`过滤中：${filter}（点击清除）`, 'search', {
+          command: 'gitea.clearRepoSearch',
+          title: '清除搜索',
+        }),
+      );
+    }
 
     if (result.pageInfo.hasNextPage) {
-      nodes.push(createMessageNode('仅显示前若干条，可在设置中调大 gitea.pageSize。', messageIcons.more));
+      nodes.push(
+        createMoreNode({
+          provider: 'repos',
+          listKey: key,
+          step: settings.pageSize,
+          loaded: result.items.length,
+        }),
+      );
     }
     return nodes;
+  }
+
+  /**
+   * 按 owner 分组。
+   *
+   * 排序规则（据此达到「聚焦当前仓库」的效果，且不重复展示同一个仓库）：
+   *   1. 含当前工作区仓库的组织**置顶**
+   *   2. 其余按仓库数降序，同数量按名称，保证顺序稳定可预期
+   * 含当前仓库的那一组**默认展开**，且该仓库在组内排第一 —— 打开工作区即可见。
+   * @param repos 仓库列表
+   * @param currentFullName 当前工作区对应的仓库全名
+   * @returns 组织分组节点
+   */
+  private groupByOwner(repos: GiteaRepository[], currentFullName?: string): GiteaNode[] {
+    const groups = new Map<string, GiteaRepository[]>();
+    for (const repo of repos) {
+      const owner = this.ownerOf(repo);
+      const list = groups.get(owner) ?? [];
+      list.push(repo);
+      groups.set(owner, list);
+    }
+
+    const holdsCurrent = (list: GiteaRepository[]): boolean =>
+      currentFullName !== undefined && list.some((repo) => repo.full_name === currentFullName);
+
+    const entries = [...groups.entries()].sort((a, b) => {
+      const diff = (holdsCurrent(a[1]) ? 0 : 1) - (holdsCurrent(b[1]) ? 0 : 1);
+      if (diff !== 0) {
+        return diff;
+      }
+      if (a[1].length !== b[1].length) {
+        return b[1].length - a[1].length;
+      }
+      return a[0].localeCompare(b[0]);
+    });
+
+    return entries.map(([owner, list]) => {
+      const ordered = currentFullName
+        ? [...list].sort((a, b) =>
+            a.full_name === currentFullName ? -1 : b.full_name === currentFullName ? 1 : 0,
+          )
+        : list;
+      return createGroupNode(
+        `${owner}（${list.length}）`,
+        groupIcons.owners(),
+        async () => ordered.map((repo) => this.createRepoEntry(repo, currentFullName)),
+        { expanded: holdsCurrent(list) },
+      );
+    });
+  }
+
+  /**
+   * 构造单个仓库节点（含铭牌）。
+   * @param repo 仓库
+   * @param currentFullName 当前工作区对应的仓库全名
+   * @returns 节点
+   */
+  private createRepoEntry(repo: GiteaRepository, currentFullName?: string): GiteaNode {
+    const owner = this.ownerOf(repo);
+    const node = createRepoNode(
+      {
+        owner,
+        name: repo.name,
+        fullName: repo.full_name,
+        defaultBranch: repo.default_branch,
+        htmlUrl: repo.html_url,
+        cloneUrl: repo.clone_url,
+        // 以下标记只影响图标，用于一眼区分私有 / 归档 / Fork / 空仓库
+        private: repo.private,
+        archived: repo.archived,
+        fork: repo.fork,
+        empty: repo.empty,
+      },
+      () => this.loadRepoChildren(owner, repo.name),
+    );
+    node.description = repoBadge(repo, currentFullName);
+    node.tooltip = new vscode.MarkdownString(
+      [
+        `**${repo.full_name}**${repo.description ? ` — ${repo.description}` : ''}`,
+        '',
+        `默认分支：\`${repo.default_branch}\``,
+        `开放 Issue：${repo.open_issues_count ?? 0} · 开放 PR：${repo.open_pr_counter ?? 0} · 分支：${repo.branch_count ?? '-'}`,
+        `Actions：${repo.has_actions === false ? '已关闭' : '已启用'}${repo.language ? ` · 主语言：${repo.language}` : ''}`,
+        '',
+        repo.has_actions === false
+          ? ''
+          : '> 这里的 Actions 指**功能是否启用**；「仓库里是否真有 workflow 文件」需要逐个仓库查询，列表不做这一请求。\n',
+        `[在浏览器中打开](${repo.html_url})`,
+      ]
+        .filter((line) => line.length > 0)
+        .join('\n'),
+    );
+    return node;
+  }
+
+  /**
+   * 取仓库的 owner 名。
+   * @param repo 仓库
+   * @returns owner 登录名
+   */
+  private ownerOf(repo: GiteaRepository): string {
+    return repo.owner?.login ?? repo.full_name.split('/')[0];
   }
 
   /**
@@ -135,7 +285,13 @@ export class ReposProvider extends BaseTreeProvider {
    */
   private async loadActionRuns(owner: string, repo: string): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
-    const result = await operations.actions.listRuns({ owner, repo, limit: 20 });
+    const settings = readSettings();
+    const key = `actions:${owner}/${repo}`;
+    const result = await operations.actions.listRuns({
+      owner,
+      repo,
+      limit: this.capOf(key, settings.pageSize),
+    });
     if (result.items.length === 0) {
       return [createMessageNode('没有 Actions 运行记录。', messageIcons.noRun)];
     }
@@ -157,7 +313,14 @@ export class ReposProvider extends BaseTreeProvider {
       ),
     );
     if (result.pageInfo.hasNextPage) {
-      nodes.push(createMessageNode('仅显示最近 20 条运行记录。', messageIcons.more));
+      nodes.push(
+        createMoreNode({
+          provider: 'repos',
+          listKey: key,
+          step: settings.pageSize,
+          loaded: result.items.length,
+        }),
+      );
     }
     return nodes;
   }
@@ -196,12 +359,19 @@ export class ReposProvider extends BaseTreeProvider {
    */
   private async loadBranches(owner: string, repo: string): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
-    const result = await operations.repos.listBranches(owner, repo, 1, 50);
+    const settings = readSettings();
+    const key = `branches:${owner}/${repo}`;
+    const result = await operations.repos.listBranches(
+      owner,
+      repo,
+      1,
+      this.capOf(key, settings.pageSize),
+    );
     if (result.items.length === 0) {
       return [createMessageNode('没有分支。', messageIcons.noBranch)];
     }
-    const serverUrl = readSettings().serverUrl;
-    return result.items.map((branch) => {
+    const serverUrl = settings.serverUrl;
+    const nodes = result.items.map((branch) => {
       // Branch 结构里没有 html_url 字段，需按 Gitea 路由规则自行拼接，
       // 否则「在浏览器打开」会因缺少地址而失败。
       const htmlUrl = branchWebUrl(serverUrl, owner, repo, branch.name);
@@ -222,6 +392,17 @@ export class ReposProvider extends BaseTreeProvider {
       );
       return node;
     });
+    if (result.pageInfo.hasNextPage) {
+      nodes.push(
+        createMoreNode({
+          provider: 'repos',
+          listKey: key,
+          step: settings.pageSize,
+          loaded: result.items.length,
+        }),
+      );
+    }
+    return nodes;
   }
 
   /**
@@ -232,11 +413,19 @@ export class ReposProvider extends BaseTreeProvider {
    */
   private async loadIssues(owner: string, repo: string): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
-    const result = await operations.issues.list({ owner, repo, state: 'open', type: 'issues', limit: 30 });
+    const settings = readSettings();
+    const key = `issues:${owner}/${repo}`;
+    const result = await operations.issues.list({
+      owner,
+      repo,
+      state: 'open',
+      type: 'issues',
+      limit: this.capOf(key, settings.pageSize),
+    });
     if (result.items.length === 0) {
       return [createMessageNode('没有打开的 Issue。', messageIcons.noIssue)];
     }
-    return result.items.map((issue) =>
+    const nodes = result.items.map((issue) =>
       createIssueNode(
         issue.title,
         {
@@ -249,6 +438,17 @@ export class ReposProvider extends BaseTreeProvider {
         (issue.labels ?? []).map((label) => label.name).join(', ') || undefined,
       ),
     );
+    if (result.pageInfo.hasNextPage) {
+      nodes.push(
+        createMoreNode({
+          provider: 'repos',
+          listKey: key,
+          step: settings.pageSize,
+          loaded: result.items.length,
+        }),
+      );
+    }
+    return nodes;
   }
 
   /**
@@ -259,11 +459,18 @@ export class ReposProvider extends BaseTreeProvider {
    */
   private async loadPulls(owner: string, repo: string): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
-    const result = await operations.pulls.list({ owner, repo, state: 'open', limit: 30 });
+    const settings = readSettings();
+    const key = `pulls:${owner}/${repo}`;
+    const result = await operations.pulls.list({
+      owner,
+      repo,
+      state: 'open',
+      limit: this.capOf(key, settings.pageSize),
+    });
     if (result.items.length === 0) {
       return [createMessageNode('没有打开的 Pull Request。', messageIcons.noPull)];
     }
-    return result.items.map((pull) => {
+    const nodes = result.items.map((pull) => {
       const payload: PullNodePayload = {
         owner,
         repo,
@@ -277,5 +484,18 @@ export class ReposProvider extends BaseTreeProvider {
       };
       return createPullNode(pull.title, payload, pull.draft ? '草稿' : `@${pull.user?.login ?? '-'}`);
     });
+    if (result.pageInfo.hasNextPage) {
+      nodes.push(
+        createMoreNode({
+          provider: 'repos',
+          listKey: key,
+          step: settings.pageSize,
+          loaded: result.items.length,
+        }),
+      );
+    }
+    return nodes;
   }
 }
+
+

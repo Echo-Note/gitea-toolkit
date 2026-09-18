@@ -147,8 +147,9 @@ async function main() {
     {
       title: '仓库',
       body: [
-        row({ label: 'gitea-toolkit', description: 'example-org', spec: icons.repoIcon({ private: true }), depth: 0 }),
-        row({ label: '分支', spec: icons.groupIcons.branches(), depth: 1 }),
+        row({ label: 'example-org（6）', spec: icons.groupIcons.owners(), depth: 0 }),
+        row({ label: 'gitea-toolkit', description: '★ 当前 · TypeScript · 8 分支', spec: icons.repoIcon({ private: true }), depth: 1 }),
+        row({ label: '分支', spec: icons.groupIcons.branches(), depth: 2 }),
         row({ label: 'main', description: 'a1b2c3d4', spec: icons.branchIcon(false), depth: 2 }),
         row({ label: 'release/1.0', description: '9f8e7d6c', spec: icons.branchIcon(true), depth: 2 }),
         row({ label: '打开的 Issue', spec: icons.groupIcons.issues(), depth: 1 }),

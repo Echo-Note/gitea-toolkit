@@ -7,6 +7,7 @@ import { VERIFIED_GITEA_VERSION } from '../../core/version';
 import { describeCompatibility, verifyCompatibility } from '../compatibility';
 import { clearToken, readSettings, setToken } from '../config';
 import { logError, logInfo, showLog } from '../logger';
+import type { BaseTreeProvider } from '../views/baseProvider';
 import type { CommandDeps, CommandMap } from './types';
 
 /**
@@ -15,7 +16,7 @@ import type { CommandDeps, CommandMap } from './types';
  * @returns 命令映射
  */
 export function createAuthCommands(deps: CommandDeps): CommandMap {
-  const { context, service } = deps;
+  const { context, service, providers } = deps;
 
   return {
     /**
@@ -146,6 +147,64 @@ export function createAuthCommands(deps: CommandDeps): CommandMap {
       // 与自动刷新共用 service.notifyChanged() 同一路径：
       // 两者走同一段代码，才不会出现「手动有效、自动无效」这类行为分叉。
       service.notifyChanged();
+    },
+
+    /**
+     * 加载更多：提升某个列表的展示上限后刷新。
+     *
+     * 存在的意义：服务端每次最多回 `max_response_items`（默认 50）条，但可以翻页，
+     * 所以「想看更多」不该靠反复调大配置 —— 那样永远有下一个上限。
+     */
+    'gitea.loadMore': (node) => {
+      const payload = ((node as { payload?: unknown } | undefined)?.payload ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const providerName = typeof payload.provider === 'string' ? payload.provider : '';
+      const listKey = typeof payload.listKey === 'string' ? payload.listKey : '';
+      const pageSize = readSettings().pageSize;
+      const step = typeof payload.step === 'number' && payload.step > 0 ? payload.step : pageSize;
+
+      const provider = (providers as unknown as Record<string, BaseTreeProvider | undefined>)[
+        providerName
+      ];
+      if (!provider || listKey.length === 0) {
+        void vscode.window.showWarningMessage('无法加载更多，请刷新视图后重试。');
+        return;
+      }
+      provider.raiseCap(listKey, pageSize, step);
+      provider.refresh();
+    },
+
+    /**
+     * 搜索仓库。
+     *
+     * 走**服务端** `/repos/search` 而不是本地过滤：本地只能过滤已加载的那一批，
+     * 仓库多了以后（例如上百个）目标仓库很可能还没加载到，等于搜不到。
+     */
+    'gitea.searchRepos': async () => {
+      const input = await vscode.window.showInputBox({
+        title: '搜索仓库',
+        // 实测：Gitea 服务端只匹配仓库名与 `owner/repo`，**不匹配纯 owner 名**
+        // （搜 "devops" 得 0 个，搜 "devops/cdt-ams" 得 1 个），故提示里写明
+        prompt: '按仓库名或 owner/repo 搜索（不支持只按组织名搜）；留空回车表示清除',
+        value: providers.repos.getRepoFilter() ?? '',
+        placeHolder: '例如 cdt-ams、devops/cdt-ams',
+        ignoreFocusOut: true,
+      });
+      // undefined 表示用户按 Esc 取消，此时保持原状
+      if (input === undefined) {
+        return;
+      }
+      providers.repos.setRepoFilter(input);
+      const applied = providers.repos.getRepoFilter();
+      logInfo(applied ? `仓库视图已过滤：${applied}` : '已清除仓库视图过滤');
+    },
+
+    /** 清除仓库搜索过滤。 */
+    'gitea.clearRepoSearch': async () => {
+      providers.repos.setRepoFilter(undefined);
+      logInfo('已清除仓库视图过滤');
     },
   };
 }

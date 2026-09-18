@@ -6,7 +6,13 @@ import { readSettings } from '../config';
 import type { GiteaService } from '../service';
 import { BaseTreeProvider } from './baseProvider';
 import { messageIcons, notificationIcon } from './icons';
-import { createMessageNode, GiteaNode, toThemeIcon, type NotificationNodePayload } from './nodes';
+import {
+  createMessageNode,
+  createMoreNode,
+  GiteaNode,
+  toThemeIcon,
+  type NotificationNodePayload,
+} from './nodes';
 
 /** 通知树视图提供者。 */
 export class NotificationsProvider extends BaseTreeProvider {
@@ -18,13 +24,16 @@ export class NotificationsProvider extends BaseTreeProvider {
   protected async getRootNodes(): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
     const settings = readSettings();
-    const result = await operations.misc.listNotifications({ limit: settings.pageSize });
+    const key = 'notifications';
+    const result = await operations.misc.listNotifications({
+      limit: this.capOf(key, settings.pageSize),
+    });
 
     if (result.items.length === 0) {
       return [createMessageNode('没有未读通知。', messageIcons.noNotification)];
     }
 
-    return result.items.map((thread) => {
+    const nodes = result.items.map((thread) => {
       const payload: NotificationNodePayload = {
         id: thread.id,
         title: thread.subject.title,
@@ -52,5 +61,16 @@ export class NotificationsProvider extends BaseTreeProvider {
       };
       return node;
     });
+    if (result.pageInfo.hasNextPage) {
+      nodes.push(
+        createMoreNode({
+          provider: 'notifications',
+          listKey: key,
+          step: settings.pageSize,
+          loaded: result.items.length,
+        }),
+      );
+    }
+    return nodes;
   }
 }

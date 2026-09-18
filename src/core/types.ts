@@ -74,6 +74,17 @@ export interface GiteaRepository {
   has_issues?: boolean;
   has_pull_requests?: boolean;
   has_wiki?: boolean;
+  /**
+   * 该仓库是否**启用了** Actions 功能。
+   *
+   * 注意语义：这只表示功能开关（仓库设置里的 unit），**不代表仓库里真的有 workflow 文件** ——
+   * 要判断后者必须逐个仓库调 `/actions/workflows`，代价是每仓库一次请求，因此不用于列表角标。
+   */
+  has_actions?: boolean;
+  /** 分支数量。列表接口会带，用于角标。 */
+  branch_count?: number;
+  /** 发布（Release）数量。 */
+  release_counter?: number;
   permissions?: GiteaRepoPermissions;
   created_at?: string;
   updated_at?: string;

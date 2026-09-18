@@ -6,6 +6,10 @@
 - 目标：Gitea **1.26.4**（API 依据其 OpenAPI 规范 `swagger.v1.json` 逐项核对）
 - 侧边栏 4 个视图：仓库 / 我的 Issue / 我的 Pull Request / 通知
   （仓库节点下含 **Actions** 分组：工作流、运行记录、作业日志）
+- 「仓库」视图**按组织分组**、**当前工作区仓库置顶**，仓库名右侧带**铭牌**
+  （语言 / 分支数 / 开放 Issue·PR / Actions 状态）
+- 仓库可**按名称或 `owner/repo` 搜索**（走服务端，覆盖全部仓库而非仅已加载的）
+- 列表支持**「加载更多」**，没有条数硬上限
 - **Issue / PR 详情交互面板**：回复、关闭、重新打开、评审、合并、检出分支
 - **Gitea Actions**：列出工作流与运行、查看作业日志、触发 / 重跑工作流
 - 29 个编辑器命令 + **35 个 AI 工具**
@@ -194,7 +198,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | 分类 | 命令 |
 | --- | --- |
 | 认证 | `Gitea: 设置访问令牌`、`Gitea: 清除访问令牌`、`Gitea: 显示当前登录用户`、`Gitea: 检查版本兼容性` |
-| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志`、`Gitea: 检查更新` |
+| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志`、`Gitea: 检查更新`、`Gitea: 搜索仓库`、`Gitea: 清除仓库搜索`、`Gitea: 加载更多` |
 | 仓库 | `Gitea: 克隆仓库到工作区`、`Gitea: 新建仓库`、`Gitea: 新建分支` |
 | Issue / PR | `Gitea: 新建 Issue`、`Gitea: 打开 Issue 详情面板`、`Gitea: 回复 Issue / Pull Request`、`Gitea: 在详情面板中回复`、`Gitea: 关闭 / 重新打开` |
 | Pull Request | `Gitea: 新建 Pull Request`、`Gitea: 打开 Pull Request 详情面板`、`Gitea: 查看 Pull Request 差异`、`Gitea: 合并 Pull Request`、`Gitea: 检出 Pull Request 分支` |
@@ -404,7 +408,7 @@ npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令
 | `gitea.defaultOwner` | 空 | 新建仓库时的默认组织 |
 | `gitea.verifyTls` | `true` | 是否校验 HTTPS 证书 |
 | `gitea.requestTimeoutMs` | `20000` | 请求超时 |
-| `gitea.pageSize` | `50` | 列表分页大小 |
+| `gitea.pageSize` | `50` | 列表类视图**总共展示多少条**（1–200，超出会自动翻页补齐） |
 | `gitea.enableMcpServer` | `true` | 是否启用内置 MCP Server |
 | `gitea.enableLanguageModelTools` | `true` | 是否注册语言模型工具 |
 | `gitea.writeCodeBuddyConfigOnActivate` | `false` | 激活时自动写入**工作区** `.codebuddy/mcp.json`（仅当文件不存在时） |
