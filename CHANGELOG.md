@@ -2,6 +2,23 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.5.1] - 2026-09-18
+
+### 变更
+
+- README「安装」一节补上两个市场的**直达页面链接**，并提示可直接在扩展面板搜索
+  `Gitea Toolkit`。
+
+### 工程
+
+- **本版本的主要目的是验证 VS Code Marketplace 发布通道**：仓库 secret `VSCE_PAT`
+  配置完成（`vsce verify-pat echo-note` 已确认令牌对该 publisher 有发布权），
+  本版本是首次经 CI 自动上架微软官方市场。
+
+  > 发布链路的顺序与幂等设计见「发布到扩展市场」一节；
+  > ⚠️ 该令牌属 Azure DevOps **全局 PAT**，此类令牌将于 **2026-12-01 停用**，届时需迁移到 Entra ID。
+
+
 ## [0.5.0] - 2026-09-18
 
 ### 修复

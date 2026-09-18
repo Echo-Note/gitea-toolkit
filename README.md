@@ -17,10 +17,12 @@
 
 **推荐从扩展市场安装**，这样能自动收到更新：
 
-| 客户端 | 装哪里 | 命令 |
+| 客户端 | 装哪里 | 命令 / 页面 |
 | --- | --- | --- |
-| **CodeBuddy**（CN / 国际版） | **Open VSX** | `code --install-extension echo-note.gitea-toolkit` |
-| **VS Code** | **VS Code Marketplace** | `code --install-extension echo-note.gitea-toolkit` |
+| **CodeBuddy**（CN / 国际版） | **Open VSX** | `code --install-extension echo-note.gitea-toolkit` · [页面](https://open-vsx.org/extension/echo-note/gitea-toolkit) |
+| **VS Code** | **VS Code Marketplace** | `code --install-extension echo-note.gitea-toolkit` · [页面](https://marketplace.visualstudio.com/items?itemName=echo-note.gitea-toolkit) |
+
+也可以在各自客户端的扩展面板里直接搜索 **`Gitea Toolkit`**。
 
 > CodeBuddy 的扩展源是 Open VSX，VS Code 用的是微软官方 Marketplace —— 两者是**不同的注册表**，
 > 但扩展 ID 相同，所以在各自客户端里用同一条命令即可。
