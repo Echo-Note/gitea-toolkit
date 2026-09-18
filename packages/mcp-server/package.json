@@ -18,7 +18,7 @@
   "homepage": "https://github.com/Echo-Note/gitea-toolkit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Echo-Note/gitea-toolkit.git",
+    "url": "git+https://github.com/Echo-Note/gitea-toolkit.git",
     "directory": "packages/mcp-server"
   },
   "bugs": {
