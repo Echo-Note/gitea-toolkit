@@ -15,7 +15,18 @@
 
 ### 安装
 
-从 [Releases](https://github.com/Echo-Note/gitea-toolkit/releases) 下载 `.vsix`：
+**推荐从扩展市场安装**，这样能自动收到更新：
+
+| 客户端 | 装哪里 | 命令 |
+| --- | --- | --- |
+| **CodeBuddy**（CN / 国际版） | **Open VSX** | `code --install-extension echo-note.gitea-toolkit` |
+| **VS Code** | **VS Code Marketplace** | `code --install-extension echo-note.gitea-toolkit` |
+
+> CodeBuddy 的扩展源是 Open VSX，VS Code 用的是微软官方 Marketplace —— 两者是**不同的注册表**，
+> 但扩展 ID 相同，所以在各自客户端里用同一条命令即可。
+
+也可以从 [Releases](https://github.com/Echo-Note/gitea-toolkit/releases) 手动下载 `.vsix`
+（离线环境、或想固定版本时）：
 
 ```bash
 # VS Code
@@ -32,6 +43,9 @@ code --install-extension gitea-toolkit-<版本>.vsix
 shasum -a 256 -c SHA256SUMS
 ```
 
+> **手动装 vsix 不会被市场自动更新**（编辑器只跟踪从市场安装的扩展）。
+> 想持续拿更新请改用上面的市场安装方式。
+>
 > Release 只有 `.vsix` 与 `SHA256SUMS` 两个附件，**不额外提供 zip**：
 > `.vsix` 本身就是 deflate 压缩的 zip，再套一层只会变大，且 `--install-extension` 不认 zip。
 > 另外注意，`SHA256SUMS` 与 vsix **同源生成**，只能证明「文件与 CI 产出一致」，
@@ -49,22 +63,18 @@ shasum -a 256 -c SHA256SUMS
 
 ### 更新扩展
 
-本扩展已上架 **Open VSX**（CodeBuddy 的扩展源），**编辑器会自动更新**，无需手动操作。
+扩展已同时上架 **Open VSX** 与 **VS Code Marketplace**，**两个渠道都由编辑器自动更新**，
+无需任何手动操作，扩展内也不再内置自己的更新检查。
 
-对于**手动装 `.vsix`** 的用户（不经市场），扩展内置了更新检查兜底：
+> **为什么不做内置更新检查**：那会是第二个「最新版本」口径 —— 扩展比对 GitHub Releases，
+> 而编辑器比对市场，两者不同步时会给出互相矛盾的提示，反而误导用户。
+> 既然两条分发通道都由编辑器接管，就只保留一个来源。
+>
+> **从 Releases 手动装 `.vsix` 的例外**：这类安装不被编辑器跟踪，**不会自动更新**。
+> 需要的话请改用市场安装。
 
-- 随时可执行 **`Gitea: 检查更新`**，比对 GitHub Releases 的最新版本
-- 提示里可直接跳到 `.vsix` 下载，下载后建议按「安装」一节核对 `SHA256SUMS`
-- `gitea.checkUpdates` 控制的是**自动**检查。因为已上架市场、编辑器会自动更新，
-  自动检查默认**已关闭**（见 `src/vscode/updateChecker.ts` 的 `UPDATE_CHANNEL`），
-  以免两条通道给出互相矛盾的提示
-
-> **别混淆这两个命令**：
-> `Gitea: 检查更新` 查的是**扩展自身**的版本；
-> `Gitea: 检查版本兼容性` 查的是**服务端 Gitea** 的版本与本扩展已核对版本的差异。
-
-自动检查的节流策略（若启用）：每天最多请求一次 GitHub，且**只在请求成功后才记录时间**
-（网络抖动不会白等一天）；同一个新版本只提示一次；任何失败都只写日志、不打扰用户。
+> **别混淆**：`Gitea: 检查版本兼容性` 查的是**服务端 Gitea** 的版本与本扩展已核对版本的差异，
+> 与扩展自身是否最新无关。
 
 ### 版本兼容性校验
 
@@ -159,7 +169,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | 分类 | 命令 |
 | --- | --- |
 | 认证 | `Gitea: 设置访问令牌`、`Gitea: 清除访问令牌`、`Gitea: 显示当前登录用户`、`Gitea: 检查版本兼容性` |
-| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志`、`Gitea: 检查更新` |
+| 通用 | `Gitea: 刷新所有视图`、`Gitea: 在浏览器打开`、`Gitea: 显示日志` |
 | 仓库 | `Gitea: 克隆仓库到工作区`、`Gitea: 新建仓库`、`Gitea: 新建分支` |
 | Issue / PR | `Gitea: 新建 Issue`、`Gitea: 打开 Issue 详情面板`、`Gitea: 回复 Issue / Pull Request`、`Gitea: 在详情面板中回复`、`Gitea: 关闭 / 重新打开` |
 | Pull Request | `Gitea: 新建 Pull Request`、`Gitea: 打开 Pull Request 详情面板`、`Gitea: 查看 Pull Request 差异`、`Gitea: 合并 Pull Request`、`Gitea: 检出 Pull Request 分支` |
@@ -333,7 +343,6 @@ npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 | `gitea.enableMcpServer` | `true` | 是否启用内置 MCP Server |
 | `gitea.enableLanguageModelTools` | `true` | 是否注册语言模型工具 |
 | `gitea.writeCodeBuddyConfigOnActivate` | `false` | 激活时自动写入**工作区** `.codebuddy/mcp.json`（仅当文件不存在时） |
-| `gitea.checkUpdates` | `true` | 是否每天检查**扩展自身**的新版本（已上架市场时该自动检查会被整体跳过，见「更新扩展」） |
 
 > 另有 `gitea.ignoreCertificates`，是 `gitea.verifyTls` 的反向兼容别名（已标记废弃），
 > 仅为兼容旧配置保留，新配置请一律使用 `gitea.verifyTls`。
@@ -413,7 +422,7 @@ github-script 的语法，以及 `permissions` 是否覆盖了代码里调用的
 
 ### 发布到扩展市场
 
-**先确定发到哪个市场**，这直接决定你的用户能不能装到：
+**两个市场都要发**，因为它们服务完全不同的客户端：
 
 | 市场 | 谁在用 | 发布工具 |
 | --- | --- | --- |
@@ -421,11 +430,12 @@ github-script 的语法，以及 `permissions` 是否覆盖了代码里调用的
 | VS Code Marketplace | 微软官方 VS Code | `vsce` |
 
 > 实测确认：CodeBuddy 的 `product.json` 中 `extensionsGallery.serviceUrl` 指向
-> `https://open-vsx.org/vscode/gallery`。**只发 MS Marketplace，CodeBuddy 用户看不到这个扩展。**
-> 本扩展的主要受众正是 CodeBuddy，所以 Open VSX 才是主通道。
+> `https://open-vsx.org/vscode/gallery`。**只发 MS Marketplace，CodeBuddy 用户看不到这个扩展**；
+> 反过来只发 Open VSX，VS Code 用户也搜不到（VS Code 默认只查微软官方市场）。
 
-两个市场的清单要求当前都已满足：`publisher`、`icon`（256×256 PNG）、`repository`、
-`license`、`README.md`、`CHANGELOG.md`，`keywords` 6 个（上限 30），文档中无图片引用。
+两个市场的清单要求当前都已满足：`publisher`、`icon`（256×256 PNG，**市场禁 SVG**）、
+`repository`、`license`、`README.md`、`CHANGELOG.md`，`keywords` 6 个（上限 30），
+文档中无图片引用（市场要求 README / CHANGELOG 里的图片必须是 https 且非 SVG）。
 
 #### 发到 Open VSX（CodeBuddy 用户走这条）
 
@@ -448,14 +458,19 @@ npx vsce login echo-note                                # 粘贴 PAT
 npx vsce publish --packagePath gitea-toolkit-<版本>.vsix
 ```
 
-#### 已接入 CI：发版时自动上架 Open VSX
+#### 已接入 CI：发版时自动上架两个市场
 
-`release` job 里已内置「发布到 Open VSX」步骤，**无需手工执行上面的 `ovsx publish`**。
+`release` job 内置了「发布到 Open VSX」与「发布到 VS Code Marketplace」两个步骤，
+**无需手工执行上面的命令**。
 
-**启用方式**：仓库 Settings → Secrets and variables → Actions → 新建 secret，名字必须是
-**`OVSX_PAT`**，值为 open-vsx.org 生成的访问令牌。
+**启用方式**（仓库 Settings → Secrets and variables → Actions）：
 
-设计上的三点：
+| secret | 值 | 对应的市场 |
+| --- | --- | --- |
+| **`OVSX_PAT`** | open-vsx.org 生成的访问令牌 | Open VSX |
+| **`VSCE_PAT`** | Azure DevOps PAT（Organization 须选 *All accessible organizations*，作用域须含 *Marketplace → Manage*） | VS Code Marketplace |
+
+设计上的三点（两个市场一致）：
 
 1. **未配置 secret 时静默跳过、不阻断发版**（只打一条 notice，并在运行摘要里说明）。
    所以这段逻辑可以先合入，等你拿到 token 再补 secret，**不需要再改 workflow**。
@@ -464,18 +479,27 @@ npx vsce publish --packagePath gitea-toolkit-<版本>.vsix
    若先建 Release 再发市场，一旦市场发布失败，重跑时该判断会变成「已发」，
    市场步骤被整个跳过，这个版本就**永远上不了架**。反过来则能自愈：
    市场发成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
-3. **幂等**：发布前先查 `https://open-vsx.org/api/<ns>/<name>/<版本>`，已存在就跳过
-   （失败重跑的常见场景）。发布命令报错后还会复查一次再判定
-   —— 该接口在「扩展不存在」时返回 **503 而非 404**，且偶发抖动，不能只看退出码。
+3. **幂等**：发布前查询该版本是否已存在，已存在就跳过（失败重跑的常见场景）。
+   两个市场的查询接口脾气不同，都不能只看发布命令的退出码：
+   - Open VSX：`/api/<ns>/<name>/<版本>` 在「扩展不存在」时返回 **503 而非 404**，且偶发抖动
+   - Marketplace：`extensionquery` 接口查询失败时保守放行，真正的重复由 `--skip-duplicate` 兜住
 
-**首次上架前必须先做**（否则步骤会失败）：
+**首次上架前必须先做**（否则对应步骤会失败）：
 
 ```bash
-# 命名空间必须等于 package.json 里的 publisher，且需先签署 Publisher Agreement
+# Open VSX：命名空间必须等于 package.json 里的 publisher，且需先签署 Publisher Agreement
 npx ovsx create-namespace echo-note -p <TOKEN>
+
+# Marketplace：在 https://marketplace.visualstudio.com/manage 创建 publisher，ID 必须为 echo-note
 ```
 
-> 注意：**该步骤要到下一次版本递增才会真正执行**。仅提交 workflow 改动不会触发发版
+> ⚠️ **Marketplace 的认证方式有硬时限**：Azure DevOps **全局 PAT 将于 2026-12-01 完全停用**，
+> 而 Marketplace 要求的正是这一类（Organization 必须选 *All accessible organizations*，
+> 选单一组织会 403/401）。届时需迁移到 **Entra ID**：
+> `vsce publish --azure-credential`（需 vsce ≥ 2.26.1），但需要 Azure 订阅 + 托管标识 + 服务连接，
+> 是独立的一块工作。Open VSX 的令牌没有这个问题。
+
+> 注意：**这两个步骤要到下一次版本递增才会真正执行**。仅提交 workflow 改动不会触发发版
 > （`release` job 会因 `v<当前版本>` 已存在而跳过），这是有意设计，不是故障。
 
 #### 三个坑
@@ -488,20 +512,20 @@ npx ovsx create-namespace echo-note -p <TOKEN>
    自己创建 commit 与 tag，和本项目的 CI 发版流程（`gh release create` 建 tag）打架。
    一律用 `--packagePath` 复用 CI 已构建的 vsix，做到「构建一次、多通道发布」，版本号严格一致。
 
-3. **Azure DevOps 全局 PAT 将于 2026-12-01 退役**（距今约两个半月）。若要把 Marketplace
-   发布也接进 CI，应直接用 Entra ID 工作负载身份联合：`vsce publish --azure-credential`
-   （需 vsce ≥ 2.26.1）。Open VSX 的 token 没有这个问题。
+3. **Marketplace 的 PAT 认证有硬时限**：Azure DevOps 全局 PAT 于 **2026-12-01 完全停用**，
+   而 Marketplace 要求的就是这一类。详见上一节的警告 —— 这不是「以后有空再说」，
+   到期当天 Marketplace 发布就会中断。
 
-#### 上架后要改一处代码（已完成）
+#### 三个通道的分工
 
-`src/vscode/updateChecker.ts` 里的 `UPDATE_CHANNEL`：`'github'` → `'marketplace'`。
+| 通道 | 受众 | 是否自动更新 |
+| --- | --- | --- |
+| **Open VSX** | CodeBuddy（CN / 国际版）、VSCodium 等 | ✅ |
+| **VS Code Marketplace** | 微软官方 VS Code | ✅ |
+| GitHub Releases | 离线安装、固定版本 | ❌ 需手动（见「更新扩展」） |
 
-不改的话会同时存在两条更新通道：编辑器已经从市场自动更新，扩展又提示「去 GitHub 下载 .vsix」。
-当 CI 每次版本递增都发 Release、而市场是手动发布时，GitHub 会持续领先，用户被反复引导绕开市场。
-
-> 2026-09-18 已改为 `'marketplace'`（`echo-note.gitea-toolkit` 在 Open VSX 上架后）。
-> 若将来新增分发通道（例如 MS Marketplace），这个值本身就是「是否由编辑器自动更新」的开关，
-> 不需要再改别的。
+CI 会**依次**发布到前两个市场，最后创建 GitHub Release 作为「本次发版完成」的标记。
+顺序不可颠倒 —— 详见 workflow 中的注释。
 
 > 继续发 GitHub Releases 仍有价值（离线安装、`SHA256SUMS` 校验、变更记录），
 > 只要保证各通道版本号一致即可。

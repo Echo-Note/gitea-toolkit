@@ -2,6 +2,46 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.4.0] - 2026-09-18
+
+### 变更（含移除）
+
+- **移除内置的「检查扩展自身更新」功能**。扩展已同时上架 Open VSX 与 VS Code Marketplace，
+  两个渠道都由编辑器自动更新，内置一套比对 GitHub Releases 的检查只会产生**第二个「最新版本」口径** ——
+  市场与 GitHub 不同步时会给出互相矛盾的提示，反而误导用户。
+
+  随之移除：
+  - 命令 `Gitea: 检查更新`（`gitea.checkForUpdates`）
+  - 配置项 `gitea.checkUpdates`
+  - 常量 `UPDATE_CHANNEL` 及 `src/vscode/updateChecker.ts`、`src/core/selfUpdate.ts`、
+    `src/vscode/commands/updateCommands.ts`
+  - 状态栏菜单里的「检查扩展更新」
+
+  > **从 Releases 手动装 `.vsix` 的用户不再收到更新提醒** —— 这类安装本来就不被编辑器跟踪。
+  > 需要持续更新请改用市场安装（见 README「安装」）。
+  >
+  > 保留的 `Gitea: 检查版本兼容性` 是**另一件事**：它查的是服务端 Gitea 版本与扩展已核对版本的差异，
+  > 与扩展自身是否最新无关。
+
+### 新增
+
+- **CI 增加 VS Code Marketplace 发布**，与 Open VSX 并列。`release` job 现在依次发布到两个市场，
+  最后才创建 GitHub Release 作为「本次发版完成」的标记 —— 顺序不可颠倒（原因见 workflow 注释）。
+  启用方式：配置仓库 secret `VSCE_PAT`（未配置时静默跳过，不阻断发版）。
+
+  > ⚠️ **认证方式有硬时限**：Marketplace 要求 PAT 的 Organization 必须是
+  > *All accessible organizations*，而 Azure DevOps 的**全局 PAT 将于 2026-12-01 完全停用**，
+  > 正是这一类。届时需迁移到 Entra ID（`vsce publish --azure-credential`，
+  > 需 Azure 订阅 + 托管标识 + 服务连接）。运行时若走 PAT 路径，步骤会打印一条迁移提醒。
+
+### 工程
+
+- Marketplace 发布步骤同样做了幂等与容错：发布前查询该版本是否已存在；
+  查询失败时**保守放行**（真正的重复由 `--skip-duplicate` 兜住），发布报错后复查再判定。
+- README 的「安装」「更新扩展」「发布到扩展市场」三节按双市场的事实重写，
+  并明确写出「手动装 vsix 不会被市场自动更新」这一容易踩的预期落差。
+
+
 ## [0.3.3] - 2026-09-18
 
 ### 修复

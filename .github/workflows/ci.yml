@@ -245,6 +245,71 @@ jobs:
           echo "::notice title=已发布到 Open VSX::${NS}.${NAME}@${VERSION}"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
+      - name: 发布到 VS Code Marketplace
+        id: vsce
+        # 与「发布到 Open VSX」同样的顺序约束：必须排在创建 Release 之前
+        # （本 job 以「Release 是否存在」判断该版本是否已发，先建 Release 会让重跑整体跳过）。
+        #
+        # ⚠️ 认证方式的时限：Marketplace 要求 PAT 的 Organization 必须是
+        #    「All accessible organizations」，而 Azure DevOps 的**全局 PAT 将于 2026-12-01 完全停用**
+        #    —— 正是这一类。届时需迁移到 Entra ID（`vsce publish --azure-credential`，
+        #    需 vsce ≥ 2.26.1，且要 Azure 订阅 + 托管标识 + 服务连接）。
+        #    迁移后本步骤可改为走 --azure-credential 并删掉 VSCE_PAT secret。
+        if: steps.resolve.outputs.tag_exists == 'false'
+        env:
+          # vsce 的 -p/--pat 默认读取 VSCE_PAT 环境变量，故不必把令牌写进命令行参数
+          # （避免出现在进程列表里；GitHub 的日志脱敏对参数是有效的，但环境变量更稳妥）
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -euo pipefail
+          PUBLISHER="$(node -p "require('./package.json').publisher")"
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="${{ steps.resolve.outputs.version }}"
+          EXT_ID="${PUBLISHER}.${NAME}"
+
+          if [ -z "${VSCE_PAT:-}" ]; then
+            echo "::notice title=跳过 Marketplace 发布::未配置 VSCE_PAT secret。产物仍会发到 GitHub Releases 与 Open VSX；配置该 secret 后本步骤自动启用。"
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 幂等判重：查该版本是否已在 Marketplace 上（典型场景是 job 失败后重跑）。
+          # 查询失败时保守放行——真正的重复由 --skip-duplicate 兜住，不会误报失败。
+          has_version() {
+            local body
+            body="$(printf '{"filters":[{"criteria":[{"filterType":7,"value":"%s"}],"pageSize":1,"pageNumber":1}],"flags":950}' "${EXT_ID}")"
+            curl -s --max-time 20 -X POST \
+              -H 'Accept: application/json;api-version=7.2-preview.1' \
+              -H 'Content-Type: application/json' \
+              --data "${body}" \
+              'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery' \
+              | VERSION="${VERSION}" python3 -c "import json,os,sys;d=json.load(sys.stdin);e=(d.get('results') or [{}])[0].get('extensions') or [];print('yes' if e and any(v.get('version')==os.environ['VERSION'] for v in (e[0].get('versions') or [])) else 'no')" 2>/dev/null | grep -q '^yes$'
+          }
+
+          if has_version; then
+            echo "::notice title=跳过 Marketplace 发布::${EXT_ID}@${VERSION} 已存在。"
+            echo "result=exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 发布正式件。--packagePath 直接发已构建的 vsix：
+          #   1. 不在 git 仓库里触发 npm version（否则会自建 commit 与 tag，与 CI 发版流程打架）
+          #   2. 保证市场件与 GitHub Release / Open VSX 三处字节一致
+          # --skip-duplicate 让「版本已存在」静默成功，重跑安全。
+          if ! npx --yes @vscode/vsce publish --packagePath "gitea-toolkit-${VERSION}.vsix" --skip-duplicate; then
+            if has_version; then
+              echo "::warning title=Marketplace 已有该版本::发布命令报错，但 ${EXT_ID}@${VERSION} 已在市场上，按成功处理。"
+              echo "result=exists" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=Marketplace 发布失败::请确认 VSCE_PAT 有效（Organization 须选 All accessible organizations，作用域须含 Marketplace → Manage），且 publisher「${PUBLISHER}」已在 https://marketplace.visualstudio.com/manage 创建。"
+            exit 1
+          fi
+
+          echo "::notice title=已发布到 VS Code Marketplace::${EXT_ID}@${VERSION}"
+          echo "::notice title=认证方式时限::Azure DevOps 全局 PAT 将于 2026-12-01 停用，届时本步骤需迁移到 Entra ID（vsce publish --azure-credential）。"
+          echo "result=published" >> "$GITHUB_OUTPUT"
+
       - name: 发布到 npm
         id: npm
         # 与「发布到 Open VSX」同样的顺序约束：必须排在创建 Release 之前
@@ -329,6 +394,7 @@ jobs:
           VERSION="${{ steps.resolve.outputs.version }}"
           TAG_EXISTS="${{ steps.resolve.outputs.tag_exists }}"
           OVSX_RESULT="${{ steps.ovsx.outputs.result }}"
+          VSCE_RESULT="${{ steps.vsce.outputs.result }}"
           NPM_RESULT="${{ steps.npm.outputs.result }}"
           {
             echo "## 发版结果"
@@ -357,6 +423,21 @@ jobs:
                   echo "**Open VSX**：未发布 —— 未配置 \`OVSX_PAT\` secret ⏭️"
                   echo
                   echo "> 配置仓库 secret \`OVSX_PAT\` 后，本步骤会在下次发版时自动启用，无需再改 workflow。"
+                  ;;
+              esac
+              echo
+              case "${VSCE_RESULT}" in
+                published)
+                  echo "**VS Code Marketplace**：已发布 ✅"
+                  ;;
+                exists)
+                  echo "**VS Code Marketplace**：该版本已存在，跳过 ⏭️"
+                  ;;
+                *)
+                  echo "**VS Code Marketplace**：未发布 —— 未配置 \`VSCE_PAT\` secret ⏭️"
+                  echo
+                  echo "> 配置仓库 secret \`VSCE_PAT\` 后，本步骤会在下次发版时自动启用，无需再改 workflow。"
+                  echo "> ⚠️ Azure DevOps 全局 PAT 将于 **2026-12-01** 停用，届时需迁移到 Entra ID。"
                   ;;
               esac
               echo
