@@ -268,6 +268,43 @@ export class RepoOperations {
   }
 
   /**
+   * 列出仓库里的工作流定义文件。
+   *
+   * 为什么要单独做这件事：Gitea 的 `GET /actions/workflows` **只枚举 `.gitea/workflows`**，
+   * 完全忽略 `.github/workflows`。实测：一个镜像了 GitHub Actions 的仓库（工作流在
+   * `.github/workflows` 下，且有 169 条运行记录）该接口返回 `total_count: 0`，
+   * 于是「工作流定义」一栏永远是空的。所以当它为空时需要回落到直接列目录。
+   *
+   * 顺带说明为什么不用运行记录反推：那样只能看到「跑过的」工作流，
+   * 新加还没跑过的会缺席。列目录才是「定义」的完整来源。
+   * @param owner 所属者
+   * @param repo 仓库名
+   * @returns 工作流文件（路径 + 文件名），按目录顺序；目录不存在时跳过
+   */
+  public async listWorkflowFiles(
+    owner: string,
+    repo: string,
+  ): Promise<{ path: string; name: string }[]> {
+    // `.gitea/workflows` 在前：那是 Gitea 推荐的位置，优先展示
+    const dirs = ['.gitea/workflows', '.github/workflows'];
+    const found: { path: string; name: string }[] = [];
+    for (const dir of dirs) {
+      // 目录不存在时 getContents 会 404 —— 那是正常情况（两种布局二选一），不当错误
+      const entries = await this.getContents(owner, repo, dir).catch(() => null);
+      if (!Array.isArray(entries)) {
+        continue;
+      }
+      for (const entry of entries) {
+        if (entry.type !== 'file' || !/\.ya?ml$/i.test(entry.name)) {
+          continue;
+        }
+        found.push({ path: entry.path || `${dir}/${entry.name}`, name: entry.name });
+      }
+    }
+    return found;
+  }
+
+  /**
    * 读取文本文件内容，自动处理 base64 解码与大小截断。
    * @param owner 所属者
    * @param repo 仓库名

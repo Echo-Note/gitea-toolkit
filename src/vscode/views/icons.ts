@@ -161,11 +161,18 @@ export const actionIcons = {
 };
 
 /**
- * 工作流节点图标：启用为播放键，停用为禁止符。
- * @param state 工作流状态（`active` 表示启用）
+ * 工作流节点图标：启用为播放键，停用为禁止符，状态未知为普通事件图标。
+ *
+ * `state` 为空串表示**状态未知** —— 当 Gitea 的 `/actions/workflows` 返回空、
+ * 我们回落到直接列工作流文件时就是这样（见 `reposProvider.loadWorkflows`）。
+ * 这时不能画成「禁止符」，那等于凭空断言它被停用了。
+ * @param state 工作流状态（`active` 表示启用，空串表示未知）
  * @returns 图标描述
  */
 export function workflowIcon(state: string): IconSpec {
+  if (state === '') {
+    return icon('symbol-event');
+  }
   return state === 'active' ? icon('play', COLOR.open) : icon('circle-slash', COLOR.warn);
 }
 

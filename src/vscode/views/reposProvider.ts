@@ -8,7 +8,7 @@
  */
 import * as vscode from 'vscode';
 import type { GiteaRepository } from '../../core/types';
-import { branchWebUrl, runWebUrl, workflowWebUrl } from '../../core/urls';
+import { branchWebUrl, repoWebUrl, runWebUrl, workflowWebUrl } from '../../core/urls';
 import { readSettings } from '../config';
 import { logWarn } from '../logger';
 import type { GiteaService } from '../service';
@@ -263,20 +263,46 @@ export class ReposProvider extends BaseTreeProvider {
    */
   private async loadWorkflows(owner: string, repo: string): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
-    const workflows = await operations.actions.listWorkflows({ owner, repo });
-    if (workflows.length === 0) {
-      return [createMessageNode('没有配置工作流定义。', messageIcons.noWorkflow)];
-    }
     const serverUrl = readSettings().serverUrl;
-    return workflows.map((workflow) =>
+    const workflows = await operations.actions.listWorkflows({ owner, repo });
+
+    if (workflows.length > 0) {
+      return workflows.map((workflow) =>
+        createActionWorkflowNode({
+          owner,
+          repo,
+          workflowId: workflow.id,
+          name: workflow.name,
+          state: workflow.state,
+          // 工作流响应通常带 html_url，缺失时按路由规则自拼，避免「点了没反应」
+          htmlUrl: workflow.html_url ?? workflowWebUrl(serverUrl, owner, repo, workflow.id),
+        }),
+      );
+    }
+
+    // 回落：Gitea 的 `GET /actions/workflows` **只枚举 `.gitea/workflows`**，忽略
+    // `.github/workflows`。实测：一个镜像了 GitHub Actions 的仓库（工作流在
+    // `.github/workflows` 下、且有 169 条运行记录）该接口返回 total_count: 0，
+    // 于是「工作流定义」这一栏永远是空的。所以回落到直接列仓库里的工作流文件。
+    // 代价是拿不到启用状态 —— 故 state 传空串，由节点渲染成「状态未知」而非「已停用」。
+    const files = await operations.repos.listWorkflowFiles(owner, repo);
+    if (files.length === 0) {
+      return [
+        createMessageNode(
+          '没有配置工作流定义（`.gitea/workflows` 与 `.github/workflows` 下都没有 YAML）。',
+          messageIcons.noWorkflow,
+        ),
+      ];
+    }
+    const actionsUrl = `${repoWebUrl(serverUrl, owner, repo)}/actions`;
+    return files.map((file) =>
       createActionWorkflowNode({
         owner,
         repo,
-        workflowId: workflow.id,
-        name: workflow.name,
-        state: workflow.state,
-        // 工作流响应通常带 html_url，缺失时按路由规则自拼，避免「点了没反应」
-        htmlUrl: workflow.html_url ?? workflowWebUrl(serverUrl, owner, repo, workflow.id),
+        workflowId: file.path,
+        name: file.name,
+        state: '',
+        htmlUrl: actionsUrl,
       }),
     );
   }

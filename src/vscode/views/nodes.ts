@@ -254,10 +254,19 @@ export function createActionWorkflowNode(payload: ActionWorkflowNodePayload): Gi
     vscode.TreeItemCollapsibleState.None,
     payload,
   );
-  node.description = payload.state === 'active' ? undefined : '已停用';
+  // `state` 为空串 = 状态未知（来自「回落到列工作流文件」那条路径，见 reposProvider）。
+  // 这时右侧显示所在目录而不是「已停用」—— 后者是凭空断言。
+  const unknown = payload.state === '';
+  const dir = payload.workflowId.split('/').slice(0, -1).join('/');
+  node.description = unknown ? dir || undefined : payload.state === 'active' ? undefined : '已停用';
   node.iconPath = toThemeIcon(workflowIcon(payload.state));
   node.tooltip = new vscode.MarkdownString(
-    `**${payload.name}**${payload.state === 'active' ? '' : '（已停用）'}\n\n文件：\`${payload.workflowId}\`\n\n[在浏览器中打开](${payload.htmlUrl})`,
+    unknown
+      ? `**${payload.name}**\n\n文件：\`${payload.workflowId}\`\n\n` +
+          '> 该实例的 `GET /actions/workflows` 没有返回工作流列表（它只枚举 `.gitea/workflows`），\n' +
+          '> 因此这里直接列出仓库里的工作流文件，**启用状态未知**。\n\n' +
+          `[在浏览器中打开](${payload.htmlUrl})`
+      : `**${payload.name}**${payload.state === 'active' ? '' : '（已停用）'}\n\n文件：\`${payload.workflowId}\`\n\n[在浏览器中打开](${payload.htmlUrl})`,
   );
   node.command = { command: 'gitea.openInBrowser', title: '在浏览器打开', arguments: [node] };
   return node;

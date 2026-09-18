@@ -82,13 +82,23 @@ export function createActionCommands(deps: CommandDeps): CommandMap {
       channel.clear();
       channel.appendLine(`# ${owner}/${repo} · ${name}（job ${jobId}）`);
       channel.appendLine('');
+      const hasLogs = logs.trim().length > 0;
       channel.appendLine(
-        logs.trim().length > 0
+        hasLogs
           ? logs
-          : '（该作业没有日志。常见原因：运行被取消、作业尚未开始执行，或日志已被清理。）',
+          : '（该作业没有可用的日志。常见原因：运行被取消、作业尚未开始执行，' +
+              '或服务端已清理日志 —— Gitea 会对日志做保留期清理。）',
       );
-      // 保留焦点在侧边栏：用户常要连着翻好几个作业
-      channel.show(true);
+      // 用 show() 而不是 show(true)：这里必须确保输出面板真的被打开并切到本通道，
+      // 让出焦点是次要的。
+      channel.show();
+      // 日志为空时额外给一条提示：否则面板里只有一行标题，看起来像「什么都没发生」。
+      // 实测镜像仓库的旧运行多半属于「日志已被 Gitea 清理」，这条提示能直接说明原因。
+      if (!hasLogs) {
+        void vscode.window.showInformationMessage(
+          `「${name}」没有可用的日志：运行可能已取消，或服务端已清理（Gitea 有保留期）。`,
+        );
+      }
     },
 
     /** 重跑一次运行：整条或仅失败的作业。 */
