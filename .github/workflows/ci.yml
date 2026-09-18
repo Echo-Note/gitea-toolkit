@@ -411,22 +411,30 @@ jobs:
         #
         # 与另外两个市场同样的顺序约束：必须排在创建 Release 之前（见 resolve job）。
         #
-        # 发布的是 packages/mcp-server 这个独立包，供 Claude Desktop / Cursor 等
-        # 非 VS Code 的 MCP 客户端用 `npx` 直接接入，无需安装扩展。
-        if: needs.resolve.outputs.tagExists == 'false'
-        env:
-          # 留空也可以：留空时 npm 会尝试 OIDC 可信发布
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # ⚠️ **本步骤刻意不受 `tagExists` 门控**（两个扩展市场则受控，这是有意的差别）：
+        # 那两个通道失败会让 job 直接失败 → 连累 Release → 所以永远不会出现
+        # 「Release 已建、但市场没发出去」的状态；而 npm 的凭据类失败是**降级跳过**（不阻断），
+        # 于是 Release 照常建出 → tagExists 变 true → npm 就**再也补不上了**（实测 0.9.1 撞到）。
+        # 改为「每次都跑」，靠下面的幂等检查（npm view）兜住重复发布：
+        #   已发布 → result=exists 直接退出；未发布 → 正好补上。
+        # 这样凭据修好后**不必再升一个版本**，重跑一次运行即可补发。
+        # （PR 由 job 级 if 拦住，不受影响。）
+        #
+        # ⚠️ **刻意不传 `NODE_AUTH_TOKEN`**：只要该环境变量存在，npm 就会**优先用它**、
+        # 根本不去尝试 OIDC —— 这正是「配了可信发布却仍然失败」的原因。实测路径：
+        # 先 E403（令牌没勾绕过 2FA）、换成新令牌后 EOTP（要求 OTP，而 CI 里没人能输）。
+        # OIDC 是官方推荐、无需长期密钥、也不受 2027-01「bypass 令牌失去自动发布能力」影响，
+        # 因此这里只保留 OIDC 一条路，对应的 `NPM_TOKEN` secret 已删除。
         run: |
           set -euo pipefail
           PKG_DIR="packages/mcp-server"
           NAME="$(node -p "require('./${PKG_DIR}/package.json').name")"
           VERSION="$(node -p "require('./${PKG_DIR}/package.json').version")"
 
-          # 认证方式：配了 NPM_TOKEN 就用令牌；没配则交给 OIDC 可信发布
-          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::notice::未配置 NPM_TOKEN，将尝试 OIDC 可信发布。若也未在 npm 配置 Trusted Publisher，本步骤会以「凭据未就绪」跳过。"
-          fi
+          # 认证：**只走 OIDC 可信发布**（本 job 已声明 id-token: write，npm CLI ≥ 11.5.1 会自动使用）。
+          # 前置条件：npm 包设置 → Trusted publishing 里已添加 GitHub Actions，
+          # 仓库 `Echo-Note/gitea-toolkit`、工作流文件名 `ci.yml`。没配好就会以「凭据未就绪」跳过。
+          echo "::notice::认证方式：OIDC 可信发布（无需任何令牌）。"
 
           # 两个包共用同一版本号，是「同一次构建产出、内容一致」的前提。
           # 一旦分叉就没人说得清哪个包版本对应哪个扩展版本，故在此硬拦。
@@ -720,7 +728,10 @@ jobs:
     #   - 不阻断 Release（扩展用户的体验优先，市场已经发了就要让 tag/Release 建出来）
     #   - 但**绝不静默** —— 降级时认领/创建一个持续存在的 issue，修好后自动关闭。
     # 用 always()：某个通道失败时也要能留下痕迹/或在恢复时关掉旧 issue。
-    if: ${{ always() && github.ref == 'refs/heads/main' && needs.resolve.outputs.tagExists == 'false' }}
+    # 不带 tagExists 门控：npm 步骤现在**每次推送都会跑**，所以降级状态随时可能变化 ——
+    # 让本 job 持续维护该 issue（通道一恢复就自动关闭）。否则 0.9.1 这种
+    # 「Release 已建、npm 却没发」的情况会一直没人提醒。
+    if: ${{ always() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -798,12 +809,21 @@ jobs:
                   '发布成功后本通道会自动跳过（幂等）。之后即可配置 Trusted Publisher 并删除 `NPM_TOKEN`。',
                 ].join('\n')
               : [
-                  '**npm 凭据未被接受** —— 常见原因是令牌**过期**，或账号开了 2FA 而令牌没勾「绕过 2FA」',
-                  '（错误原文：*Two-factor authentication or granular access token with bypass 2fa enabled is required*）。',
+                  '**npm 凭据未被接受**。实测见过两种错误原文：',
                   '',
-                  '彻底解法是改用 **OIDC 可信发布**：在 npm 包设置 → *Trusted publishing* 里配 GitHub Actions',
-                  '（仓库 `Echo-Note/gitea-toolkit`，工作流文件名 `ci.yml`），然后删掉 `NPM_TOKEN` —— ',
-                  '**没有长期密钥，就没有过期这回事**。',
+                  '- `E403 … Two-factor authentication or granular access token with bypass 2fa enabled`',
+                  '  —— 令牌没勾「绕过 2FA」',
+                  '- `EOTP … requires a one-time password from your authenticator`',
+                  '  —— 令牌**有效但未获 2FA 豁免**，而 CI 里没人能输 OTP',
+                  '',
+                  '所以走 `NPM_TOKEN` 这条路时，令牌**必须显式带「绕过 2FA」**（npm 在令牌页会警告其风险）。',
+                  '',
+                  '**彻底解法是 OIDC 可信发布**（包已存在，现在可以配了）：npm 包设置 → *Trusted publishing*',
+                  '里添加 GitHub Actions，仓库 `Echo-Note/gitea-toolkit`、工作流文件名 `ci.yml`，',
+                  '然后删掉 `NPM_TOKEN` secret —— **没有长期密钥，就没有过期这回事**，也不受 2027-01',
+                  '那次「bypass 令牌失去自动发布能力」的变更影响。',
+                  '',
+                  '> 配好之后**不需要再升版本**：重跑一次流水线，npm 步骤会自动把当前版本补发上去。',
                 ].join('\n');
 
             const body = [
