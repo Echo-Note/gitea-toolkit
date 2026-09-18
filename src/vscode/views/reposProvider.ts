@@ -264,29 +264,74 @@ export class ReposProvider extends BaseTreeProvider {
   private async loadWorkflows(owner: string, repo: string): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
     const serverUrl = readSettings().serverUrl;
-    const workflows = await operations.actions.listWorkflows({ owner, repo });
 
-    if (workflows.length > 0) {
-      return workflows.map((workflow) =>
+    // **以文件列表为准，API 只用来补「启用状态」。**
+    //
+    // 因为 Gitea 的 `GET /actions/workflows` **只枚举 `.gitea/workflows`**，忽略
+    // `.github/workflows`：实测一个镜像了 GitHub Actions 的仓库（工作流在 `.github/workflows`
+    // 下、且有 169 条运行记录）该接口返回 total_count: 0，于是「工作流定义」永远是空的。
+    //
+    // 一开始写的是「API 为空才回落」，但那会漏掉一个仓库**同时使用两个目录**的情况
+    // （API 有返回 → 直接 return → `.github/workflows` 下的看不见）。改成两者都取、
+    // 按文件名合并，就不会漏。
+    const [apiEntries, files] = await Promise.all([
+      // 这个接口在部分实例上不可靠（恒空或直接报错），失败时降级为「没有状态信息」，
+      // 不该因为拿不到状态就让整个分组打不开。
+      operations.actions.listWorkflows({ owner, repo }).catch((error: unknown) => {
+        logWarn('读取工作流列表失败，仅按文件列表展示', error);
+        return [] as Awaited<ReturnType<typeof operations.actions.listWorkflows>>;
+      }),
+      operations.repos.listWorkflowFiles(owner, repo),
+    ]);
+
+    // 用**文件名**匹配：`ActionWorkflow.id` 是文件路径（如 `.gitea/workflows/ci.yml`），
+    // 而 `name` 是 YAML 里的显示名（如「CI」），两者不能混。
+    const apiByFileName = new Map<string, (typeof apiEntries)[number]>();
+    for (const entry of apiEntries) {
+      apiByFileName.set(entry.id.split('/').pop() ?? entry.id, entry);
+    }
+
+    const nodes: GiteaNode[] = [];
+    const usedApiIds = new Set<string>();
+
+    for (const file of files) {
+      const api = apiByFileName.get(file.name);
+      if (api) {
+        usedApiIds.add(api.id);
+      }
+      nodes.push(
         createActionWorkflowNode({
           owner,
           repo,
-          workflowId: workflow.id,
-          name: workflow.name,
-          state: workflow.state,
-          // 工作流响应通常带 html_url，缺失时按路由规则自拼，避免「点了没反应」
-          htmlUrl: workflow.html_url ?? workflowWebUrl(serverUrl, owner, repo, workflow.id),
+          workflowId: api?.id ?? file.path,
+          // API 的 name 是 YAML 里的显示名，比文件名更好认；没有就用文件名
+          name: api?.name ?? file.name,
+          // 状态只在 API 给出时才显示，否则交给节点渲染成「状态未知」
+          state: api?.state ?? '',
+          htmlUrl:
+            api?.html_url ?? `${repoWebUrl(serverUrl, owner, repo)}/actions`,
         }),
       );
     }
 
-    // 回落：Gitea 的 `GET /actions/workflows` **只枚举 `.gitea/workflows`**，忽略
-    // `.github/workflows`。实测：一个镜像了 GitHub Actions 的仓库（工作流在
-    // `.github/workflows` 下、且有 169 条运行记录）该接口返回 total_count: 0，
-    // 于是「工作流定义」这一栏永远是空的。所以回落到直接列仓库里的工作流文件。
-    // 代价是拿不到启用状态 —— 故 state 传空串，由节点渲染成「状态未知」而非「已停用」。
-    const files = await operations.repos.listWorkflowFiles(owner, repo);
-    if (files.length === 0) {
+    // API 列出了、但文件列表没覆盖到的（例如工作流定义在其它分支）也补上，避免漏项
+    for (const entry of apiEntries) {
+      if (usedApiIds.has(entry.id)) {
+        continue;
+      }
+      nodes.push(
+        createActionWorkflowNode({
+          owner,
+          repo,
+          workflowId: entry.id,
+          name: entry.name,
+          state: entry.state,
+          htmlUrl: entry.html_url ?? workflowWebUrl(serverUrl, owner, repo, entry.id),
+        }),
+      );
+    }
+
+    if (nodes.length === 0) {
       return [
         createMessageNode(
           '没有配置工作流定义（`.gitea/workflows` 与 `.github/workflows` 下都没有 YAML）。',
@@ -294,17 +339,7 @@ export class ReposProvider extends BaseTreeProvider {
         ),
       ];
     }
-    const actionsUrl = `${repoWebUrl(serverUrl, owner, repo)}/actions`;
-    return files.map((file) =>
-      createActionWorkflowNode({
-        owner,
-        repo,
-        workflowId: file.path,
-        name: file.name,
-        state: '',
-        htmlUrl: actionsUrl,
-      }),
-    );
+    return nodes;
   }
 
   /**
