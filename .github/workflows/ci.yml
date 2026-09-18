@@ -179,6 +179,57 @@ jobs:
           test -f SHA256SUMS || { echo "::error::缺少 SHA256SUMS"; exit 1; }
           sha256sum -c SHA256SUMS
 
+      - name: 发布到 Open VSX
+        id: ovsx
+        # 刻意放在创建 Release **之前**，顺序不能反：
+        # 本 job 用「v<版本> 的 Release 是否存在」判断该版本是否已发（见 step resolve）。
+        # 若先建 Release 再发市场，一旦市场发布失败，重跑时 tag_exists 就成了 true，
+        # 市场发布步骤会被整个跳过 —— 该版本将永远上不了架，只能人工补发。
+        # 反过来则可以自愈：市场发布成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
+        #
+        # CodeBuddy 的扩展源是 Open VSX（见 README「发布到扩展市场」），所以这才是主通道。
+        if: steps.resolve.outputs.tag_exists == 'false'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          set -euo pipefail
+          NS="$(node -p "require('./package.json').publisher")"
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="${{ steps.resolve.outputs.version }}"
+          API="https://open-vsx.org/api/${NS}/${NAME}"
+
+          # 未配置 secret 时静默降级，不阻断发版：
+          # 这样本步骤可以先合入，等 token 就绪后无需再改 workflow 即自动生效。
+          # 用 ${OVSX_PAT:-} 而非 ${OVSX_PAT}：脚本开了 set -u，
+          # 变量在「未定义」而非「空值」时直接取用会报 unbound variable 而中断。
+          if [ -z "${OVSX_PAT:-}" ]; then
+            echo "::notice title=跳过 Open VSX 发布::未配置 OVSX_PAT secret。产物仍会发到 GitHub Releases；配置该 secret 后本步骤自动启用。"
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 幂等：同版本已发布过就跳过（典型场景是 job 失败后重跑）
+          if [ "$(curl -s -o /dev/null -w '%{http_code}' "${API}/${VERSION}")" = "200" ]; then
+            echo "::notice title=跳过 Open VSX 发布::${NS}.${NAME}@${VERSION} 已存在。"
+            echo "result=exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! npx --yes ovsx publish "gitea-toolkit-${VERSION}.vsix" -p "${OVSX_PAT}"; then
+            # 复查后再判定：Open VSX 的版本接口在「扩展/命名空间不存在」时返回 503 而非 404，
+            # 且偶发抖动，不能只看命令退出码就认定失败。
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' "${API}/${VERSION}")" = "200" ]; then
+              echo "::warning title=Open VSX 已有该版本::发布命令报错，但 ${VERSION} 确实已在 Open VSX 上，按成功处理。"
+              echo "result=exists" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=Open VSX 发布失败::请确认 OVSX_PAT 有效，且命名空间 ${NS} 已创建并已签署 Publisher Agreement。"
+            exit 1
+          fi
+
+          echo "::notice title=已发布到 Open VSX::${NS}.${NAME}@${VERSION}"
+          echo "result=published" >> "$GITHUB_OUTPUT"
+
       - name: 创建 Release（同时依据打包版本打 tag）
         id: publish
         if: steps.resolve.outputs.tag_exists == 'false'
@@ -204,6 +255,7 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.resolve.outputs.version }}"
           TAG_EXISTS="${{ steps.resolve.outputs.tag_exists }}"
+          OVSX_RESULT="${{ steps.ovsx.outputs.result }}"
           {
             echo "## 发版结果"
             echo
@@ -215,6 +267,24 @@ jobs:
               echo "Release：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
               echo
               echo "校验下载：\`shasum -a 256 -c SHA256SUMS\`"
+              echo
+              case "${OVSX_RESULT}" in
+                published)
+                  echo "**Open VSX**：已发布 ✅"
+                  echo
+                  echo "> 若这是**首次**上架，记得把 \`src/vscode/updateChecker.ts\` 的 \`UPDATE_CHANNEL\`"
+                  echo "> 改成 \`'marketplace'\`。否则编辑器已从 Open VSX 自动更新，扩展还会另外提示"
+                  echo "> 「去 GitHub 下载 .vsix」，两条更新通道会互相打架（详见 README「发布到扩展市场」）。"
+                  ;;
+                exists)
+                  echo "**Open VSX**：该版本已存在，跳过 ⏭️"
+                  ;;
+                *)
+                  echo "**Open VSX**：未发布 —— 未配置 \`OVSX_PAT\` secret ⏭️"
+                  echo
+                  echo "> 配置仓库 secret \`OVSX_PAT\` 后，本步骤会在下次发版时自动启用，无需再改 workflow。"
+                  ;;
+              esac
             else
               echo "⏭️ 跳过：\`v${VERSION}\` 已存在（版本号未变更）"
               echo

@@ -417,6 +417,36 @@ npx vsce login echo-note                                # 粘贴 PAT
 npx vsce publish --packagePath gitea-toolkit-<版本>.vsix
 ```
 
+#### 已接入 CI：发版时自动上架 Open VSX
+
+`release` job 里已内置「发布到 Open VSX」步骤，**无需手工执行上面的 `ovsx publish`**。
+
+**启用方式**：仓库 Settings → Secrets and variables → Actions → 新建 secret，名字必须是
+**`OVSX_PAT`**，值为 open-vsx.org 生成的访问令牌。
+
+设计上的三点：
+
+1. **未配置 secret 时静默跳过、不阻断发版**（只打一条 notice，并在运行摘要里说明）。
+   所以这段逻辑可以先合入，等你拿到 token 再补 secret，**不需要再改 workflow**。
+   反过来，只要 secret 存在，任何发布失败都会让 job 失败 —— 不会让你误以为已经上架。
+2. **刻意排在「创建 Release」之前**。本 job 用「`v<版本>` 的 Release 是否存在」判断该版本是否已发；
+   若先建 Release 再发市场，一旦市场发布失败，重跑时该判断会变成「已发」，
+   市场步骤被整个跳过，这个版本就**永远上不了架**。反过来则能自愈：
+   市场发成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
+3. **幂等**：发布前先查 `https://open-vsx.org/api/<ns>/<name>/<版本>`，已存在就跳过
+   （失败重跑的常见场景）。发布命令报错后还会复查一次再判定
+   —— 该接口在「扩展不存在」时返回 **503 而非 404**，且偶发抖动，不能只看退出码。
+
+**首次上架前必须先做**（否则步骤会失败）：
+
+```bash
+# 命名空间必须等于 package.json 里的 publisher，且需先签署 Publisher Agreement
+npx ovsx create-namespace echo-note -p <TOKEN>
+```
+
+> 注意：**该步骤要到下一次版本递增才会真正执行**。仅提交 workflow 改动不会触发发版
+> （`release` job 会因 `v<当前版本>` 已存在而跳过），这是有意设计，不是故障。
+
 #### 三个坑
 
 1. **`publisher` 上架后不可更改**。它同时是 Marketplace 的 publisher ID 和 Open VSX 的命名空间；
