@@ -74,6 +74,23 @@
 
 ### 工程
 
+- **三个发布通道改为并行 job**，不再是同一个 job 里连续的三步。
+  原来串行本身不是大问题，真正的毛病是**任一步失败会让后面的步骤被整体跳过** ——
+  例如 Open VSX 出错，会导致 Marketplace 压根不去尝试发布。
+
+  现在拆成四个 job：`resolve`（解析版本 + 判断该版本是否已发）、三个 `publish-*`
+  （Open VSX / VS Code Marketplace / GitHub Packages，**并行执行、独立成败**）、
+  以及 `release`（建 tag 与 Release）。「市场发布必须先于创建 Release」这条不变，
+  由 `needs` 保证 —— 否则重跑时该版本会被判定为「已发」而永远上不了架。
+
+- **Release 说明改从 CHANGELOG 提取**（新增 `scripts/release-notes.mjs`）。
+  原先是 `gh release create --generate-notes`，那生成的是**按 commit / PR 自动罗列**的
+  摘要，与 CHANGELOG 里那份有分类、有原因、有实测数据的说明完全是两回事 ——
+  结果是 Release 页面看不到真正的变更说明。
+
+  现在三者同源：**扩展市场的 Changelog 标签页 / `.vsix` 里的 CHANGELOG / Release 说明**。
+  自动摘要原本附带的版本对比链接由脚本补回。
+
 - **新增 `npm run check:changelog`，防止未填写的 CHANGELOG 区块再次发给用户。**
   `scripts/bump-version.mjs` 升版本时会在 CHANGELOG 顶部插入一个「待补充」区块，
   而**它不会自己消失** —— 0.8.1 就是这么把占位文本发到了市场（该条目本次已补上）。
@@ -83,7 +100,7 @@
   校验两件事：一是没有未填占位（`待补充` / `待填写` / `TODO:` …），
   二是最新版本标题与 `package.json` 的 `version` 一致。
   已接入 `npm run ci`，并且是 CI `verify` job 的一步 —— 依赖链是
-  `release → package → verify`，因此**能真正挡住发布**，而不只是发个警告。
+  `release → publish-* → package → verify`，因此**能真正挡住发布**，而不只是发个警告。
 
 ## [0.8.1] - 2026-09-18
 

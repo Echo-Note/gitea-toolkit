@@ -529,31 +529,54 @@ npx vsce login echo-note                                # 粘贴 PAT
 npx vsce publish --packagePath gitea-toolkit-<版本>.vsix
 ```
 
-#### 已接入 CI：发版时自动上架两个市场
+#### 已接入 CI：发版时自动上架两个市场（外加独立 MCP 包）
 
-`release` job 内置了「发布到 Open VSX」与「发布到 VS Code Marketplace」两个步骤，
-**无需手工执行上面的命令**。
+发布由**四个 job** 完成，**无需手工执行上面的命令**：
+
+```
+resolve          解析版本号 + 判断该版本是否已发（看 Release 是否存在）
+   ├─ publish-ovsx      发布到 Open VSX              ┐
+   ├─ publish-vsce      发布到 VS Code Marketplace   ├ 三个并行执行
+   └─ publish-ghpkg     发布到 GitHub Packages       ┘
+release          三个都成功后才创建 tag 与 Release
+```
+
+**为什么拆成独立 job**：放在同一个 job 里当连续三步的话，不只是串行，而且
+**任一步失败会让后面的步骤被整体跳过** —— 例如 Open VSX 报错会导致 Marketplace
+压根不去尝试发布。拆开后每个市场独立成败、互不牵连，也更快（三个网络请求并行）。
 
 **启用方式**（仓库 Settings → Secrets and variables → Actions）：
 
-| secret | 值 | 对应的市场 |
+| secret | 值 | 对应的目标 |
 | --- | --- | --- |
 | **`OVSX_PAT`** | open-vsx.org 生成的访问令牌 | Open VSX |
 | **`VSCE_PAT`** | Azure DevOps PAT（Organization 须选 *All accessible organizations*，作用域须含 *Marketplace → Manage*） | VS Code Marketplace |
+| *（无需配置）* | 用 workflow 内置的 `GITHUB_TOKEN` | GitHub Packages |
 
-设计上的三点（两个市场一致）：
+设计上的三点（三个目标一致）：
 
 1. **未配置 secret 时静默跳过、不阻断发版**（只打一条 notice，并在运行摘要里说明）。
    所以这段逻辑可以先合入，等你拿到 token 再补 secret，**不需要再改 workflow**。
-   反过来，只要 secret 存在，任何发布失败都会让 job 失败 —— 不会让你误以为已经上架。
-2. **刻意排在「创建 Release」之前**。本 job 用「`v<版本>` 的 Release 是否存在」判断该版本是否已发；
-   若先建 Release 再发市场，一旦市场发布失败，重跑时该判断会变成「已发」，
-   市场步骤被整个跳过，这个版本就**永远上不了架**。反过来则能自愈：
+   反过来，只要 secret 存在，任何发布失败都会让那个 job 失败 —— 不会让你误以为已经上架。
+2. **刻意排在「创建 Release」之前**。本流程用「`v<版本>` 的 Release 是否存在」判断该版本
+   是否已发；若先建 Release 再发市场，一旦市场发布失败，重跑时该判断会变成「已发」，
+   三个市场被整体跳过，这个版本就**永远上不了架**。反过来则能自愈：
    市场发成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
 3. **幂等**：发布前查询该版本是否已存在，已存在就跳过（失败重跑的常见场景）。
-   两个市场的查询接口脾气不同，都不能只看发布命令的退出码：
+   各家的查询接口脾气不同，都不能只看发布命令的退出码：
    - Open VSX：`/api/<ns>/<name>/<版本>` 在「扩展不存在」时返回 **503 而非 404**，且偶发抖动
    - Marketplace：`extensionquery` 接口查询失败时保守放行，真正的重复由 `--skip-duplicate` 兜住
+
+> **Release 说明直接取自 CHANGELOG**（不再用 `gh release create --generate-notes` 的自动摘要）：
+> 后者按 commit / PR 罗列，与 CHANGELOG 里那份有分类、有原因、有实测数据的说明完全是两回事。
+> 现在「扩展市场的 Changelog 标签页」「`.vsix` 里的 CHANGELOG」「Release 说明」三者同源，
+> 不会再出现改了一处忘了一处。
+>
+> ⚠️ **已发布的历史 Release 不会自动更新**。需要回填某个版本时：
+>
+> ```bash
+> gh release edit v0.8.1 --notes-file <(node scripts/release-notes.mjs --version 0.8.1)
+> ```
 
 **首次上架前必须先做**（否则对应步骤会失败）：
 
@@ -570,8 +593,9 @@ npx ovsx create-namespace echo-note -p <TOKEN>
 > `vsce publish --azure-credential`（需 vsce ≥ 2.26.1），但需要 Azure 订阅 + 托管标识 + 服务连接，
 > 是独立的一块工作。Open VSX 的令牌没有这个问题。
 
-> 注意：**这两个步骤要到下一次版本递增才会真正执行**。仅提交 workflow 改动不会触发发版
-> （`release` job 会因 `v<当前版本>` 已存在而跳过），这是有意设计，不是故障。
+> 注意：**这些 job 要到下一次版本递增才会真正发布**。仅提交 workflow 改动不会触发发版
+> （`resolve` 会看到 `v<当前版本>` 的 Release 已存在，各发布步骤随之跳过），
+> 这是有意设计，不是故障。
 
 #### 三个坑
 

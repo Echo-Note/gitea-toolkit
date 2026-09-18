@@ -137,26 +137,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  release:
-    name: 打 tag 并发布
+  resolve:
+    name: 解析版本与发布状态
     needs: package
-    # 只在 main 上发布，PR 不发布。
+    # 为什么单独抽一个 job：三个市场要**并行**发布，而并行的前提是各自成一个 job；
+    # 而它们都需要同一份「版本号 + 该版本是否已经发过」的判断，所以放在这里共享。
     #
-    # 「是否发版」由「版本号是否变过」决定：若 package.json 的版本已有对应 tag/Release 就跳过。
-    # 因此日常推送不会产生 Release，只有主动升级版本号（npm run version:patch 等）才会发版。
-    # tag 由 gh release create 依据 package.json 的版本自动创建，无需人工 git tag。
-    #
-    # 注意：这里创建 tag 会触发 push(tag) 事件，但本 workflow 只监听 push(branches: main)，
-    # 因此不会自我触发，无需 [skip ci]。
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    # 「是否发版」由「版本号是否变过」决定：若 package.json 的版本已有对应 Release 就跳过。
+    # 因此日常推送不会发版，只有主动升级版本号（npm run version:patch 等）才会发版。
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      # 发布 MCP 包到 GitHub Packages 需要（用内置 GITHUB_TOKEN，无需自建 secret）
-      packages: write
-      # 供 secrets.GITHUB_TOKEN 之外的 OIDC 场景留用（例如将来的 Entra ID 发布）
-      id-token: write
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tagExists: ${{ steps.resolve.outputs.tag_exists }}
@@ -165,18 +155,9 @@ jobs:
         uses: actions/checkout@v7
 
       - name: 安装 Node
-        # registry-url 会写入 .npmrc（token 由 NODE_AUTH_TOKEN 提供）；
-        # 固定版本也保证 npm CLI 够新（GitHub Packages 的 scope 映射与认证都在包级 .npmrc 里）
         uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: 下载已构建的 VSIX
-        # 复用 package job 的产物，避免重复构建
-        uses: actions/download-artifact@v7
-        with:
-          name: gitea-toolkit-vsix
 
       - name: 解析版本号并判断是否已发布
         id: resolve
@@ -194,31 +175,60 @@ jobs:
             echo "v${VERSION} 尚未发布，准备创建 tag 与 Release"
           fi
 
+  publish-ovsx:
+    name: 发布到 Open VSX
+    needs: [package, resolve]
+    # 三个市场**各自独立成 job、并行发布**。
+    # 原先它们是同一个 job 里连续的三步 —— 那样不但串行，而且**任一步失败会让后面的步骤
+    # 被整体跳过**：例如 Open VSX 报错会导致 Marketplace 压根不去尝试发布。拆开后互不牵连。
+    #
+    # ⚠️ 但「市场发布必须先于创建 Release」这条不变：Release 是否存在，正是本流程判断
+    #    「该版本是否已发」的依据（见 resolve job）。下面的 release job 用 needs 保证
+    #    自己一定在这三个 job 之后才运行。
+    #
+    # CodeBuddy 的扩展源是 Open VSX（见 README「发布到扩展市场」），所以这是主通道。
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 下载已构建的 VSIX
+        # 复用 package job 的产物，避免重复构建
+        uses: actions/download-artifact@v7
+        with:
+          name: gitea-toolkit-vsix
+
       - name: 校验产物完整性
         # 用 package job 生成的校验和，确认跨 job 传递后产物未损坏
-        # （同时保证发布出去的 hash 与附件确实对得上）
         run: |
           set -euo pipefail
           test -f SHA256SUMS || { echo "::error::缺少 SHA256SUMS"; exit 1; }
           sha256sum -c SHA256SUMS
 
       - name: 发布到 Open VSX
-        id: ovsx
-        # 刻意放在创建 Release **之前**，顺序不能反：
-        # 本 job 用「v<版本> 的 Release 是否存在」判断该版本是否已发（见 step resolve）。
-        # 若先建 Release 再发市场，一旦市场发布失败，重跑时 tag_exists 就成了 true，
-        # 市场发布步骤会被整个跳过 —— 该版本将永远上不了架，只能人工补发。
-        # 反过来则可以自愈：市场发布成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
-        #
-        # CodeBuddy 的扩展源是 Open VSX（见 README「发布到扩展市场」），所以这才是主通道。
-        if: steps.resolve.outputs.tag_exists == 'false'
+        id: publish
+        # 刻意排在创建 Release **之前**，顺序不能反：Release 是否存在就是本流程判断
+        # 「该版本是否已发」的依据（见 resolve job）。若先建 Release 再发市场，
+        # 一旦市场发布失败，重跑时 tag_exists 就成了 true，市场步骤会被整个跳过 ——
+        # 该版本将永远上不了架，只能人工补发。
+        # 反过来可以自愈：市场发布成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
+        if: needs.resolve.outputs.tagExists == 'false'
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           set -euo pipefail
           NS="$(node -p "require('./package.json').publisher")"
           NAME="$(node -p "require('./package.json').name")"
-          VERSION="${{ steps.resolve.outputs.version }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
           API="https://open-vsx.org/api/${NS}/${NAME}"
 
           # 未配置 secret 时静默降级，不阻断发版：
@@ -253,17 +263,48 @@ jobs:
           echo "::notice title=已发布到 Open VSX::${NS}.${NAME}@${VERSION}"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
+  publish-vsce:
+    name: 发布到 VS Code Marketplace
+    needs: [package, resolve]
+    # 与 publish-ovsx 同理：独立成 job 以便并行，且必须排在创建 Release 之前。
+    # 注意这里只需要默认的 contents: read —— 若将来 Marketplace 迁移到 Entra ID
+    # （vsce publish --azure-credential），要在这里补 id-token: write 才能取到 OIDC 令牌。
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 下载已构建的 VSIX
+        uses: actions/download-artifact@v7
+        with:
+          name: gitea-toolkit-vsix
+
+      - name: 校验产物完整性
+        run: |
+          set -euo pipefail
+          test -f SHA256SUMS || { echo "::error::缺少 SHA256SUMS"; exit 1; }
+          sha256sum -c SHA256SUMS
+
       - name: 发布到 VS Code Marketplace
-        id: vsce
+        id: publish
         # 与「发布到 Open VSX」同样的顺序约束：必须排在创建 Release 之前
-        # （本 job 以「Release 是否存在」判断该版本是否已发，先建 Release 会让重跑整体跳过）。
+        # （Release 是否存在就是本流程判断该版本是否已发的依据，见 resolve job）。
         #
         # ⚠️ 认证方式的时限：Marketplace 要求 PAT 的 Organization 必须是
         #    「All accessible organizations」，而 Azure DevOps 的**全局 PAT 将于 2026-12-01 完全停用**
         #    —— 正是这一类。届时需迁移到 Entra ID（`vsce publish --azure-credential`，
         #    需 vsce ≥ 2.26.1，且要 Azure 订阅 + 托管标识 + 服务连接）。
         #    迁移后本步骤可改为走 --azure-credential 并删掉 VSCE_PAT secret。
-        if: steps.resolve.outputs.tag_exists == 'false'
+        if: needs.resolve.outputs.tagExists == 'false'
         env:
           # vsce 的 -p/--pat 默认读取 VSCE_PAT 环境变量，故不必把令牌写进命令行参数
           # （避免出现在进程列表里；GitHub 的日志脱敏对参数是有效的，但环境变量更稳妥）
@@ -272,7 +313,7 @@ jobs:
           set -euo pipefail
           PUBLISHER="$(node -p "require('./package.json').publisher")"
           NAME="$(node -p "require('./package.json').name")"
-          VERSION="${{ steps.resolve.outputs.version }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
           EXT_ID="${PUBLISHER}.${NAME}"
 
           if [ -z "${VSCE_PAT:-}" ]; then
@@ -318,18 +359,48 @@ jobs:
           echo "::notice title=认证方式时限::Azure DevOps 全局 PAT 将于 2026-12-01 停用，届时本步骤需迁移到 Entra ID（vsce publish --azure-credential）。"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
+  publish-ghpkg:
+    name: 发布到 GitHub Packages
+    needs: [package, resolve]
+    # 与另外两个市场同理：独立成 job 以便并行，且必须排在创建 Release 之前。
+    # 区别是这里**需要 packages: write** —— 用的是内置 GITHUB_TOKEN，无需自建 secret。
+    # 注意显式声明 permissions 后，未列出的 scope 会被置为 none，所以 contents 也要写。
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node
+        # registry-url 会写入 .npmrc（token 由 NODE_AUTH_TOKEN 提供）；
+        # 固定版本也保证 npm CLI 够新（GitHub Packages 的 scope 映射与认证都在包级 .npmrc 里）
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 下载已构建的 MCP 包产物
+        # 独立 MCP 包的 dist/index.js 由 package job 与 vsix 一起上传
+        uses: actions/download-artifact@v7
+        with:
+          name: gitea-toolkit-vsix
+
       - name: 发布到 GitHub Packages
-        id: npm
+        id: publish
         # 发布到 GitHub Packages（npm 协议），**不用 npmjs.org**，也不需要额外 secret：
         # 用内置 GITHUB_TOKEN 即可，仅需 packages: write 权限。
-        # 认证与 scope 映射来自 packages/mcp-server/.npmrc（包级，避免影响本 job 中
-        # `npx @vscode/vsce` 对公共 registry 的依赖）。
-        # 与「发布到 Open VSX」同样的顺序约束：必须排在创建 Release 之前
-        # （本 job 以「Release 是否存在」判断该版本是否已发，先建 Release 会让重跑整体跳过）。
+        # 认证与 scope 映射来自 packages/mcp-server/.npmrc（包级）。
+        # 与另外两个市场同样的顺序约束：必须排在创建 Release 之前（见 resolve job）。
         #
         # 发布的是 packages/mcp-server 这个独立包，供 Claude Desktop / Cursor 等
         # 非 VS Code 的 MCP 客户端用 `npx` 直接接入，无需安装扩展。
-        if: steps.resolve.outputs.tag_exists == 'false'
+        if: needs.resolve.outputs.tagExists == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -385,6 +456,47 @@ jobs:
           echo "::notice title=已发布到 GitHub Packages::${NAME}@${VERSION}"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
+  release:
+    name: 打 tag 并创建 Release
+    needs: [resolve, publish-ovsx, publish-vsce, publish-ghpkg]
+    # 刻意排在三个市场**之后**（由 needs 保证）。原因是本流程用「v<版本> 的 Release 是否
+    # 存在」判断该版本是否已发（见 resolve job）：若先建 Release 再发市场，市场一旦失败，
+    # 重跑时 tag_exists 就成了 true，三个市场会被整体跳过，该版本永远上不了架。
+    # 反过来可以自愈：市场发成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
+    #
+    # 这里创建 tag 会触发 push(tag) 事件，但本 workflow 只监听 push(branches: main)，
+    # 因此不会自我触发，无需 [skip ci]。
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # 供 OIDC 场景留用（例如将来 Marketplace 迁移到 Entra ID）。发布 MCP 包所需的
+      # packages: write 已经跟着发布步骤移到 publish-ghpkg，这里不再需要。
+      id-token: write
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 下载已构建的 VSIX
+        # 复用 package job 的产物（含独立 MCP 包的 dist/index.js）
+        uses: actions/download-artifact@v7
+        with:
+          name: gitea-toolkit-vsix
+
+      - name: 校验产物完整性
+        # 用 package job 生成的校验和，确认跨 job 传递后产物未损坏
+        # （同时保证发布出去的 hash 与附件确实对得上）
+        run: |
+          set -euo pipefail
+          test -f SHA256SUMS || { echo "::error::缺少 SHA256SUMS"; exit 1; }
+          sha256sum -c SHA256SUMS
+
       - name: 打包独立 MCP 包为 tarball（供匿名 npx）
         # 为什么还要这一步：GitHub Packages 的 npm 源**不接受匿名安装**（连公开包也要令牌），
         # 用户须先建 PAT 并写 ~/.npmrc 才能 `npx @echo-note/gitea-toolkit-mcp`。
@@ -395,7 +507,7 @@ jobs:
         # 附件名**刻意不带版本号**：这样 `releases/latest/download/gitea-toolkit-mcp.tgz`
         # 是稳定地址，而 `releases/download/v<版本>/gitea-toolkit-mcp.tgz` 又能精确锁版本
         # —— 版本信息由 tag 承载，不必写进文件名。
-        if: steps.resolve.outputs.tag_exists == 'false'
+        if: needs.resolve.outputs.tagExists == 'false'
         run: |
           set -euo pipefail
           # npm pack 是本地操作，不需要认证；package.json / README 来自 checkout，
@@ -411,34 +523,69 @@ jobs:
           ls -lh gitea-toolkit-mcp.tgz
           echo "::notice title=已生成 MCP tarball::匿名安装可用 npx -y <Release 附件地址>"
 
-      - name: 创建 Release（同时依据打包版本打 tag）
-        id: publish
-        if: steps.resolve.outputs.tag_exists == 'false'
+      - name: 生成 Release 说明（取自 CHANGELOG）
+        if: needs.resolve.outputs.tagExists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.resolve.outputs.version }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
+          # 正文直接取 CHANGELOG 里该版本的区块，而不是 --generate-notes 的自动摘要：
+          # 后者按 commit / PR 罗列，与 CHANGELOG 里那份写给人看、有分类有原因的说明
+          # 完全是两回事 —— 用户反馈过「Releases 缺失 changelog」。
+          # 用同一来源还保证「扩展市场的 Changelog 标签页」「.vsix 里的 CHANGELOG」
+          # 「Release 说明」三者说的是同一件事。
+          node scripts/release-notes.mjs --out release-notes.md
+
+          # 补一条版本对比链接：它原先由 --generate-notes 附带，改用 --notes-file 后需要自己加。
+          # 起点取「当前最新一个已存在的 Release」；首次发版时没有前一个，跳过即可。
+          PREV="$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)"
+          if [ -n "${PREV}" ]; then
+            {
+              echo
+              echo '---'
+              echo
+              echo "**完整变更对比**：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${PREV}...v${VERSION}"
+            } >> release-notes.md
+          else
+            echo "::notice title=未找到上一个 Release::本次是首个版本，跳过变更对比链接。"
+          fi
+
+          echo "::notice title=Release 说明已生成::取自 CHANGELOG 的 ${VERSION} 区块，共 $(wc -l < release-notes.md) 行"
+
+      - name: 创建 Release（同时依据打包版本打 tag）
+        id: publish
+        if: needs.resolve.outputs.tagExists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.resolve.outputs.version }}"
           test -f "gitea-toolkit-${VERSION}.vsix" || {
             echo "::error::未找到产物 gitea-toolkit-${VERSION}.vsix"
             ls -l ./*.vsix || true
             exit 1
           }
-          # --target 让 tag 精确指向本次实际构建的提交，避免落到别的提交上
+          test -f release-notes.md || {
+            echo "::error::缺少 release-notes.md（应由上一步从 CHANGELOG 生成）"
+            exit 1
+          }
+          # --target 让 tag 精确指向本次实际构建的提交，避免落到别的提交上。
+          # --notes-file：正文来自 CHANGELOG，取代原来的 --generate-notes。
           gh release create "v${VERSION}" "gitea-toolkit-${VERSION}.vsix" SHA256SUMS gitea-toolkit-mcp.tgz \
             --target "${GITHUB_SHA}" \
             --title "v${VERSION}" \
-            --generate-notes
+            --notes-file release-notes.md
           echo "::notice title=已发布::tag v${VERSION} → ${GITHUB_SHA}"
 
       - name: 写入摘要
         run: |
           set -euo pipefail
-          VERSION="${{ steps.resolve.outputs.version }}"
-          TAG_EXISTS="${{ steps.resolve.outputs.tag_exists }}"
-          OVSX_RESULT="${{ steps.ovsx.outputs.result }}"
-          VSCE_RESULT="${{ steps.vsce.outputs.result }}"
-          NPM_RESULT="${{ steps.npm.outputs.result }}"
+          VERSION="${{ needs.resolve.outputs.version }}"
+          TAG_EXISTS="${{ needs.resolve.outputs.tagExists }}"
+          OVSX_RESULT="${{ needs.publish-ovsx.outputs.result }}"
+          VSCE_RESULT="${{ needs.publish-vsce.outputs.result }}"
+          NPM_RESULT="${{ needs.publish-ghpkg.outputs.result }}"
           {
             echo "## 发版结果"
             echo
@@ -454,10 +601,6 @@ jobs:
               case "${OVSX_RESULT}" in
                 published)
                   echo "**Open VSX**：已发布 ✅"
-                  echo
-                  echo "> 若这是**首次**上架，记得把 \`src/vscode/updateChecker.ts\` 的 \`UPDATE_CHANNEL\`"
-                  echo "> 改成 \`'marketplace'\`。否则编辑器已从 Open VSX 自动更新，扩展还会另外提示"
-                  echo "> 「去 GitHub 下载 .vsix」，两条更新通道会互相打架（详见 README「发布到扩展市场」）。"
                   ;;
                 exists)
                   echo "**Open VSX**：该版本已存在，跳过 ⏭️"
@@ -505,7 +648,9 @@ jobs:
 
   report-failure:
     name: 构建失败 → 创建 Issue
-    needs: [verify, package, release]
+    # 必须把三个发布 job 都列进来：任一市场发布失败时，release job 会被跳过
+    # （它 needs 这三个），若这里只写 release，就不会触发失败报告。
+    needs: [verify, package, resolve, publish-ovsx, publish-vsce, publish-ghpkg, release]
     # 只在 main 分支失败时建 issue：
     #   - PR 失败不建，否则每个 bugfix 分支都会刷 issue
     #   - main 失败说明主干已损坏，必须有人知道
@@ -622,7 +767,9 @@ jobs:
 
   close-failure-issue:
     name: 构建恢复 → 关闭 Issue
-    needs: [verify, package, release]
+    # 与 report-failure 保持一致，否则「市场发布失败但 release 被跳过」时
+    # 这条路不会是 success()，也就不会去关闭遗留的失败 issue。
+    needs: [verify, package, resolve, publish-ovsx, publish-vsce, publish-ghpkg, release]
     # 形成闭环：修好之后不用人工去关那个失败 issue
     if: ${{ success() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
