@@ -111,9 +111,14 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: gitea-toolkit-vsix
+          # 独立 MCP 包的产物一并上传：它由同一次 esbuild 产出（见 esbuild.js 的
+          # emitMcpPackage），release job 里的 npm 发布直接复用，不重新构建。
+          # 包目录里的 package.json / README.md 来自 checkout，无需上传。
           path: |
             *.vsix
             SHA256SUMS
+            packages/mcp-server/dist/index.js
+            packages/mcp-server/LICENSE
           if-no-files-found: error
           retention-days: 30
 
@@ -142,12 +147,22 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      # npm publish --provenance 需要：向 npm 签发产物来源证明（绑定到具体 repo / workflow / commit）
+      id-token: write
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tagExists: ${{ steps.resolve.outputs.tag_exists }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
+
+      - name: 安装 Node
+        # registry-url 会写入 .npmrc（token 由 NODE_AUTH_TOKEN 提供）；
+        # 固定版本也保证 npm CLI 够新，--provenance 需要 npm >= 9.5
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
 
       - name: 下载已构建的 VSIX
         # 复用 package job 的产物，避免重复构建
@@ -230,6 +245,64 @@ jobs:
           echo "::notice title=已发布到 Open VSX::${NS}.${NAME}@${VERSION}"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
+      - name: 发布到 npm
+        id: npm
+        # 与「发布到 Open VSX」同样的顺序约束：必须排在创建 Release 之前
+        # （本 job 以「Release 是否存在」判断该版本是否已发，先建 Release 会让重跑整体跳过）。
+        #
+        # 发布的是 packages/mcp-server 这个独立包，供 Claude Desktop / Cursor 等
+        # 非 VS Code 的 MCP 客户端用 `npx` 直接接入，无需安装扩展。
+        if: steps.resolve.outputs.tag_exists == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          PKG_DIR="packages/mcp-server"
+          NAME="$(node -p "require('./${PKG_DIR}/package.json').name")"
+          VERSION="$(node -p "require('./${PKG_DIR}/package.json').version")"
+
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::notice title=跳过 npm 发布::未配置 NPM_TOKEN secret。配置后本步骤自动启用。"
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 两个包共用同一版本号，是「同一次构建产出、内容一致」的前提。
+          # 一旦分叉就没人说得清哪个 npm 版本对应哪个扩展版本，故在此硬拦。
+          ROOT_VERSION="$(node -p "require('./package.json').version")"
+          if [ "${VERSION}" != "${ROOT_VERSION}" ]; then
+            echo "::error title=npm 包版本与扩展不一致::${PKG_DIR}=${VERSION}，扩展=${ROOT_VERSION}。请检查 scripts/bump-version.mjs 的版本同步是否生效。"
+            exit 1
+          fi
+
+          test -f "${PKG_DIR}/dist/index.js" || {
+            echo "::error::缺少 ${PKG_DIR}/dist/index.js（构建产物应由 package job 上传）"
+            exit 1
+          }
+
+          # 幂等：该版本已发布过就跳过（典型场景是 job 失败后重跑）
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "::notice title=跳过 npm 发布::${NAME}@${VERSION} 已存在。"
+            echo "result=exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --provenance 会向 npm 附上产物来源证明，用户可核对「这个包确实由本仓库的
+          # 哪次 workflow、哪个 commit 构建」，对要 npx 执行本地代码的场景尤其重要。
+          if ! npm publish "${PKG_DIR}" --provenance --access public; then
+            # 复查后判定：可能是并发/重跑导致的「版本已存在」，而非真的失败
+            if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+              echo "::warning title=npm 已有该版本::发布命令报错，但 ${NAME}@${VERSION} 确实已在 npm 上，按成功处理。"
+              echo "result=exists" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error title=npm 发布失败::请确认 NPM_TOKEN 有效（需 Automation 或具备 publish 权限的 Granular Token），且包名 ${NAME} 未被他人占用。"
+            exit 1
+          fi
+
+          echo "::notice title=已发布到 npm::${NAME}@${VERSION}"
+          echo "result=published" >> "$GITHUB_OUTPUT"
+
       - name: 创建 Release（同时依据打包版本打 tag）
         id: publish
         if: steps.resolve.outputs.tag_exists == 'false'
@@ -256,6 +329,7 @@ jobs:
           VERSION="${{ steps.resolve.outputs.version }}"
           TAG_EXISTS="${{ steps.resolve.outputs.tag_exists }}"
           OVSX_RESULT="${{ steps.ovsx.outputs.result }}"
+          NPM_RESULT="${{ steps.npm.outputs.result }}"
           {
             echo "## 发版结果"
             echo
@@ -283,6 +357,20 @@ jobs:
                   echo "**Open VSX**：未发布 —— 未配置 \`OVSX_PAT\` secret ⏭️"
                   echo
                   echo "> 配置仓库 secret \`OVSX_PAT\` 后，本步骤会在下次发版时自动启用，无需再改 workflow。"
+                  ;;
+              esac
+              echo
+              case "${NPM_RESULT}" in
+                published)
+                  echo "**npm**：\`gitea-toolkit-mcp\` 已发布 ✅（含 provenance 证明）"
+                  ;;
+                exists)
+                  echo "**npm**：该版本已存在，跳过 ⏭️"
+                  ;;
+                *)
+                  echo "**npm**：未发布 —— 未配置 \`NPM_TOKEN\` secret ⏭️"
+                  echo
+                  echo "> 配置仓库 secret \`NPM_TOKEN\` 后，本步骤会在下次发版时自动启用，无需再改 workflow。"
                   ;;
               esac
             else

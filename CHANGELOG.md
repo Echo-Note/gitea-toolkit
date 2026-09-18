@@ -2,6 +2,46 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.3.0] - 2026-09-18
+
+### 新增
+
+- **MCP Server 独立为 npm 包 `gitea-toolkit-mcp`**，不再只能作为扩展的一部分使用。
+  Claude Desktop、Cursor 等任何支持 stdio 的 MCP 客户端现在可以直接接入，**无需安装 VS Code 扩展**：
+
+  ```bash
+  npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+  ```
+
+  实际上服务端代码早在最初就与 VS Code 完全解耦（`src/core`、`src/ai/tools`、`src/mcpServer`
+  均不引用 `vscode`），缺的只是打包与发布 —— 此前它只作为 `.vsix` 里的一个文件存在，
+  外部拿不到。
+- MCP Server 新增**命令行参数**：`--url`、`--token`、`--no-verify-tls`、`--timeout`、
+  `--max-output`、`--help`、`--version`。独立使用时不必再被迫走环境变量；
+  **命令行参数优先于环境变量**，两者都保留（扩展内置路径继续用环境变量，行为不变）。
+
+### 工程
+
+- **构建一次、复制两份**：`esbuild.js` 把 MCP Server 构建为 `dist/mcpServer.js` 后，
+  复制一份到 `packages/mcp-server/dist/index.js`。刻意不分别构建 —— 两条分发通道
+  （扩展内置 / 独立 npm 包）的代码必须一致，分别构建会有漂移风险。
+  复制时会去掉行尾 `sourceMappingURL`（避免指向不存在的 `.map`）并补 shebang + 可执行位
+  （npm 的 `bin` 在 Unix 下是符号链接，没有 shebang 跑不起来）。
+- `scripts/bump-version.mjs` 同步 npm 包的版本号，两个包**共用一个版本号**（同一次构建产出，
+  分叉后没人说得清哪个 npm 版本对应哪个扩展版本）。CI 发布前还会再校验一次，不一致直接失败。
+- CI 的新增「发布到 npm」步骤：secret 名为 **`NPM_TOKEN`**，未配置时静默跳过、不阻断发版；
+  幂等（`npm view` 判重）；带 `--provenance` 附上产物来源证明，用户可核对包确实由本仓库哪次
+  workflow / commit 构建 —— 对要 `npx` 执行本地代码的场景尤其重要。
+
+### 说明
+
+- npm 包**零依赖**：所有依赖已打进单个 bundle，`npx` 下载后直接运行，没有依赖安装步骤。
+- 该步骤的 shell 同样被抽取出来跑了六条分支（未配置 secret / 版本已存在 / 版本不一致 /
+  缺少产物 / 发布失败 / 发布报错但复查发现已存在）。
+- 注意 `--help` 与 `--version` 之外**不允许向 stdout 写任何东西** —— stdio 模式下 stdout 归
+  MCP 协议所有，混入杂输出会让客户端直接解析失败。已在三组场景下实测 stdout 全部是合法 JSON-RPC。
+
+
 ## [0.2.1] - 2026-09-17
 
 ### 新增

@@ -12,6 +12,11 @@ tsconfig.json
 esbuild.js
 **/*.map
 
+# 独立发布的 npm 包整体不进扩展包：
+# 它内含一份与 dist/mcpServer.js 内容相同的 bundle，打进来等于让每个 .vsix 白白多背 ~400KB。
+# 两者由同一次 esbuild 构建产出，扩展运行时只用自己的 dist/mcpServer.js。
+packages/**
+
 # 市场图标的可编辑源文件：运行时只用到 media/icon.png，源文件留在仓库里便于改版
 media/icon.svg
 

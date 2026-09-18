@@ -1,0 +1,36 @@
+{
+  "name": "gitea-toolkit-mcp",
+  "version": "0.3.0",
+  "description": "Gitea 的 MCP 工具服务（stdio）：27 个工具覆盖仓库 / Issue / Pull Request / 通知 的读写。独立于 VS Code 扩展，任何 MCP 客户端（Claude Desktop、Cursor、CodeBuddy…）均可接入。",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "gitea",
+    "ai",
+    "agent",
+    "issue",
+    "pull-request"
+  ],
+  "homepage": "https://github.com/Echo-Note/gitea-toolkit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Echo-Note/gitea-toolkit.git",
+    "directory": "packages/mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/Echo-Note/gitea-toolkit/issues"
+  },
+  "license": "MIT",
+  "author": "echo-note",
+  "bin": {
+    "gitea-toolkit-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

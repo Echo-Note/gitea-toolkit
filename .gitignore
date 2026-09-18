@@ -2,11 +2,16 @@ node_modules/
 dist/
 out/
 *.vsix
+*.tgz
 .DS_Store
 .env
 .env.local
 *.log
 .eslintcache
+
+# 独立 MCP 包的构建产物（dist 已由上面的 dist/ 覆盖，这里是随包拷贝的协议文本）
+packages/mcp-server/LICENSE
+packages/mcp-server/dist/
 
 # AI 协作工作记忆：含本机绝对路径与内部实例信息，仅本地保留
 .codebuddy/memory/

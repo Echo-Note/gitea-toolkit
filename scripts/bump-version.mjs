@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 递增扩展版本号（写入 package.json，并同步 CHANGELOG.md 的版本标题）。
+ * 递增版本号（写入 package.json，同步 CHANGELOG.md 版本标题与独立 MCP 包版本）。
  *
  * 用法：
  *   node scripts/bump-version.mjs                  # patch +1：0.1.0 → 0.1.1（默认）
@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJsonPath = path.join(projectRoot, 'package.json');
 const changelogPath = path.join(projectRoot, 'CHANGELOG.md');
+const mcpPackageJsonPath = path.join(projectRoot, 'packages', 'mcp-server', 'package.json');
 
 /** 支持的递增类型。 */
 const PARTS = ['major', 'minor', 'patch'];
@@ -137,6 +138,29 @@ function insertChangelogEntry(version) {
   return true;
 }
 
+/**
+ * 同步独立 MCP 包（packages/mcp-server）的版本号。
+ *
+ * 两个包共用一个版本号是刻意的：它们由**同一次构建**产出、内容完全一致，
+ * 版本号一旦分叉，就没人能说清「哪个 npm 版本对应哪个扩展版本」了。
+ * @param {string} version 新版本号
+ * @returns {boolean} 是否发生了修改
+ */
+function syncMcpPackageVersion(version) {
+  if (!fs.existsSync(mcpPackageJsonPath)) {
+    console.log('[bump-version] 未找到 packages/mcp-server/package.json，跳过同步');
+    return false;
+  }
+  const pkg = JSON.parse(fs.readFileSync(mcpPackageJsonPath, 'utf8'));
+  if (pkg.version === version) {
+    return false;
+  }
+  pkg.version = version;
+  fs.writeFileSync(mcpPackageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+  console.log(`[bump-version] 已同步 packages/mcp-server/package.json → ${version}`);
+  return true;
+}
+
 function main() {
   if (process.env.SKIP_VERSION_BUMP === '1') {
     console.log('[bump-version] 检测到 SKIP_VERSION_BUMP=1，跳过版本递增');
@@ -172,6 +196,7 @@ function main() {
 
   pkg.version = target;
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+  syncMcpPackageVersion(target);
 
   if (changelog) {
     insertChangelogEntry(target);

@@ -1,10 +1,15 @@
 /**
- * 内置 MCP Server 入口（stdio 传输）。
+ * MCP Server 入口（stdio 传输）。
  *
- * 由扩展通过 MCP Provider 或配置文件以子进程方式拉起。约定：
- *   - stdout 专用于 MCP 协议报文
- *   - 所有诊断信息一律写入 stderr
- *   - 配置通过环境变量注入（GITEA_SERVER_URL / GITEA_TOKEN / ...）
+ * 两种使用方式：
+ *   1. VS Code 扩展内置：由扩展通过 MCP Provider 或配置文件以子进程拉起
+ *   2. **独立使用**：作为 npm 包 `gitea-toolkit-mcp` 直接运行，任何 MCP 客户端均可接入
+ *      （`npx -y gitea-toolkit-mcp --url ... --token ...`），无需安装扩展
+ *
+ * 严格约定（破坏任何一条都会让客户端无法解析协议）：
+ *   - **stdout 只用于 MCP 协议报文**，任何诊断信息一律写 stderr
+ *   - `--help` / `--version` 是显式的用户命令，此时才允许写 stdout 并退出
+ *   - 配置来源：命令行参数优先于环境变量（GITEA_SERVER_URL / GITEA_TOKEN / ...）
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -41,9 +46,117 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
   };
 }
 
+/** 命令行用法说明。 */
+const USAGE = `gitea-toolkit-mcp —— Gitea 仓库 / Issue / PR / 通知 的 MCP 工具服务（stdio）
+
+用法：
+  gitea-toolkit-mcp [选项]
+
+选项（均可用环境变量提供，命令行参数优先）：
+  --url <地址>         Gitea 实例地址              [环境变量 GITEA_SERVER_URL]
+  --token <令牌>       访问令牌                    [环境变量 GITEA_TOKEN]
+  --no-verify-tls      跳过 HTTPS 证书校验          [环境变量 GITEA_VERIFY_TLS=false]
+  --timeout <毫秒>     请求超时，默认 20000        [环境变量 GITEA_TIMEOUT_MS]
+  --max-output <字符>  单次工具输出上限，默认 100000 [环境变量 GITEA_MAX_OUTPUT_LENGTH]
+  -h, --help           显示本帮助
+  -v, --version        显示版本号
+
+示例：
+  npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <你的令牌>
+
+MCP 客户端配置示例（Claude Desktop / Cursor 等）：
+  {
+    "mcpServers": {
+      "gitea": {
+        "command": "npx",
+        "args": ["-y", "gitea-toolkit-mcp", "--url", "https://gitea.example.com", "--token", "<令牌>"]
+      }
+    }
+  }
+
+令牌需在 Gitea 的「设置 → 应用 → 生成令牌」创建，勾选 repo、issue、notification 权限。`;
+
+/** 命令行解析结果。 */
+type CliAction =
+  /** 正常启动，overrides 覆盖环境变量中的同名配置。 */
+  | { kind: 'run'; overrides: Partial<ServerEnv> }
+  | { kind: 'help' }
+  | { kind: 'version' };
+
 /**
- * 解析扩展版本号（用于 MCP 的 serverInfo）。
- * 产物位于 dist/ 下，因此向上一级即为扩展根目录。
+ * 解析命令行参数。
+ *
+ * 只在显式要求时才产出 help / version —— 因为 stdio 模式下 stdout 归协议所有，
+ * 绝不能顺手打印任何东西。
+ * @param argv 原始参数（不含 node 与脚本路径）
+ * @returns 解析结果
+ * @throws 参数非法时抛错（由调用方打印用法后以退出码 2 结束）
+ */
+export function parseArgs(argv: string[]): CliAction {
+  const overrides: Partial<ServerEnv> = {};
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const name = argv[index];
+
+    if (name === '-h' || name === '--help') {
+      return { kind: 'help' };
+    }
+    if (name === '-v' || name === '--version') {
+      return { kind: 'version' };
+    }
+    if (name === '--no-verify-tls') {
+      overrides.verifyTls = false;
+      continue;
+    }
+
+    // 其余选项均需取值，统一在此消费下一个参数
+    index += 1;
+    const value = argv[index];
+    if (value === undefined) {
+      throw new Error(`参数 ${name} 缺少取值`);
+    }
+
+    switch (name) {
+      case '--url':
+        overrides.serverUrl = value.trim().replace(/\/+$/, '');
+        break;
+      case '--token':
+        overrides.token = value.trim() || undefined;
+        break;
+      case '--timeout':
+        overrides.timeoutMs = parsePositiveInt(value, name);
+        break;
+      case '--max-output':
+        overrides.maxOutputLength = parsePositiveInt(value, name);
+        break;
+      default:
+        throw new Error(`未知参数：${name}`);
+    }
+  }
+
+  return { kind: 'run', overrides };
+}
+
+/**
+ * 解析正整数参数。
+ * @param value 原始文本
+ * @param name 参数名（用于报错）
+ * @returns 解析结果
+ */
+function parsePositiveInt(value: string, name: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`参数 ${name} 需要一个正整数，收到「${value}」`);
+  }
+  return parsed;
+}
+
+/**
+ * 解析扩展版本号（用于 MCP 的 serverInfo 与 `--version`）。
+ *
+ * 产物有两种位置，都需兼容：
+ *   - `dist/mcpServer.js`（扩展内置）→ 向上一级为扩展根目录
+ *   - `packages/mcp-server/dist/index.js`（独立 npm 包）→ 向上一级为包根目录
  * @returns 版本字符串
  */
 function resolveVersion(): string {
@@ -120,15 +233,37 @@ function clampText(text: string, limit: number): string {
   return `${text.slice(0, limit)}\n\n…（输出过长已截断）`;
 }
 
-/** 启动 MCP Server。 */
-export async function main(): Promise<void> {
-  const config = readEnv();
+/**
+ * 启动 MCP Server。
+ * @param argv 命令行参数（默认取 process.argv 去掉 node 与脚本路径）
+ */
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+  let action: CliAction;
+  try {
+    action = parseArgs(argv);
+  } catch (error) {
+    // 参数错误与「启动失败」区分开：用法写 stderr，退出码 2
+    process.stderr.write(`${(error as Error).message}\n\n${USAGE}\n`);
+    process.exit(2);
+  }
+
+  // help / version 是显式的用户命令，只有这两种情况才允许写 stdout
+  if (action.kind === 'help') {
+    process.stdout.write(`${USAGE}\n`);
+    return;
+  }
+  if (action.kind === 'version') {
+    process.stdout.write(`${resolveVersion()}\n`);
+    return;
+  }
+
+  const config: ServerEnv = { ...readEnv(), ...action.overrides };
   if (config.serverUrl.length === 0) {
-    logToStderr('缺少 GITEA_SERVER_URL 环境变量，无法启动。请通过扩展的「Gitea: 复制 MCP 配置」重新生成配置。');
+    logToStderr('缺少 Gitea 实例地址，无法启动。请用 --url 指定，或设置环境变量 GITEA_SERVER_URL。');
     process.exit(1);
   }
   if (!config.token) {
-    logToStderr('未提供 GITEA_TOKEN，工具调用将因未认证而失败。');
+    logToStderr('未提供访问令牌，工具调用将因未认证而失败。请用 --token 指定，或设置环境变量 GITEA_TOKEN。');
   }
 
   const { operations } = createGitea({

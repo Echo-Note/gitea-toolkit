@@ -183,7 +183,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | --- | --- |
 | **CodeBuddy** | **不消费** VS Code 的 MCP 贡献点，必须落盘 → 执行 `Gitea: 写入 CodeBuddy MCP 配置` |
 | **VS Code** | 支持 MCP Definition Provider → 扩展激活后自动出现在 MCP 面板，**无需落盘** |
-| 其它 MCP 客户端 | `Gitea: 复制 MCP 配置到剪贴板`，粘贴进客户端的 MCP 配置 |
+| **其它 MCP 客户端** | **不必装扩展**：直接用独立 npm 包 `npx -y gitea-toolkit-mcp`（见下） |
 
 > 这一点实测确认过：CodeBuddy 的 MCP 面板完全由 `~/.codebuddy/mcp.json` 驱动。
 > 即使扩展已经在 `package.json` 声明 `contributes.mcpServerDefinitionProviders`
@@ -216,6 +216,33 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit.mcp', { ... });
 ```
 
 访问令牌在「服务器即将启动」回调中才注入，不会长期停留在配置对象里。
+
+#### 其它 MCP 客户端：用独立 npm 包（无需装扩展）
+
+MCP Server 已作为**独立 npm 包**发布，不依赖 VS Code 扩展，任何支持 stdio 的 MCP 客户端均可接入：
+
+```bash
+npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+```
+
+```json
+{
+  "mcpServers": {
+    "gitea": {
+      "command": "npx",
+      "args": ["-y", "gitea-toolkit-mcp", "--url", "https://gitea.example.com"],
+      "env": { "GITEA_TOKEN": "你的令牌" }
+    }
+  }
+}
+```
+
+`npx -y gitea-toolkit-mcp --help` 可查看全部参数（`--no-verify-tls`、`--timeout`、`--max-output`），
+命令行参数优先于环境变量。npm 上的 README 有 Claude Desktop / Cursor 的完整示例。
+
+> **与扩展同源同构建**：共用 `src/core` 与工具定义；`esbuild.js` 一次构建后把**同一份产物**
+> 复制给扩展与 npm 包两侧（内容字节一致，只是落点不同），因此两边行为不会漂移。
+> 版本号由 `scripts/bump-version.mjs` 强制同步，CI 发布前还会校验两者一致，不一致直接失败。
 
 #### 其它客户端与工作区级配置
 
@@ -489,7 +516,7 @@ src/
 │   ├── mcpProvider.ts       # 动态注册 MCP Server
 │   ├── mcpConfig.ts         # MCP 启动参数与配置文件生成
 │   └── lmTools.ts           # vscode.lm.registerTool 适配
-├── mcpServer/main.ts        # 独立 MCP stdio 服务进程
+├── mcpServer/main.ts        # MCP stdio 服务进程（含命令行参数解析）
 └── vscode/
     ├── config.ts            # 配置 + SecretStorage 令牌
     ├── service.ts           # 客户端缓存、当前用户、默认仓库推断
@@ -502,7 +529,15 @@ src/
         ├── icons.ts         # 节点图标与配色（纯数据，可离线预览 / 校验）
         ├── nodes.ts         # 树节点结构与交互绑定
         └── *Provider.ts     # 4 个树视图
+
+packages/mcp-server/         # 独立发布的 npm 包（不依赖 VS Code）
+├── package.json             # 版本号由 scripts/bump-version.mjs 与扩展强制同步
+├── README.md                # npm 页面正文
+└── dist/index.js            # 构建产物：esbuild 用同一份 bundle 投递过来（含 shebang）
 ```
+
+> `packages/mcp-server/dist/index.js` 与扩展内的 `dist/mcpServer.js` **由同一次 esbuild 构建产出**
+> （构建后复制，不重复打包），保证两条分发通道的代码字节一致。
 
 ### 设计要点
 
