@@ -48,10 +48,11 @@
     后者需在 npm 包设置里配置 Trusted Publisher 指向本仓库的 `ci.yml`；
     本 job 已声明 `id-token: write`，满足其要求。注意它要求包**已存在**，
     所以首次发布只能用令牌或本地手动发一次。
-  - **本地手动首发必须显式带 `--otp=<6 位码>`**：实测即便刚 `npm login` 成功也不会自动
-    提示输入 OTP，而是直接 403 —— npm 只在收到特定错误码时才交互。错误信息本身就给了
-    两条出路（*Two-factor authentication **or** granular access token with bypass 2fa
-    enabled*），这次两条都没提供。
+  - **本地手动首发的 2FA 交互取决于账号方式**：**安全密钥**下 npm 会**自动**打开浏览器
+    完成认证（实测：直接 `npm publish --access public` 即可，终端会打印
+    `Authenticate your account at: …`，无需任何参数）；**TOTP 账号**则需带 `--otp=<6 位码>`。
+    注意 CLI **不会**主动提示 OTP —— 它只在收到特定错误码时才交互，因此"既没提示、又直接 403"
+    时应重新 `npm login`（走浏览器 / 安全密钥流程）后重试，而不是急着去建长期令牌。
   - 另注：**npm 正在收紧 bypass-2FA 令牌**的自动化发布能力（目标 2027 年 1 月，届时它只能
     「暂存发布」再由维护者 2FA 批准），CI 应尽快迁到 OIDC 以避开这次变更。
   - **凭据类错误（401/403/ENEEDAUTH/EOTP/2FA）降级为「醒目提示 + 跳过」**，

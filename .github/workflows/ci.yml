@@ -477,7 +477,7 @@ jobs:
             HIT="$(grep -m1 -iE 'ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication|E404|Not found|is not in this registry' "${LOG}" | cut -c1-200)"
             if grep -qiE "E404|Not found|is not in this registry" "${LOG}"; then
               REASON="package-missing"
-              echo "::warning title=npm 包尚不存在 → 跳过 npm 发布::${NAME} 在 npm 上还没创建过（scope @echo-note 存在，但该包 404）。可信发布要求包已存在，所以**首次发布必须手动做一次**：cd packages/mcp-server && npm publish --access public --otp=<6 位码>。⚠️ 实测：登录过也不会自动提示输 OTP，会直接 403（npm 只在收到特定错误码时才交互）—— 必须显式带 --otp；若账号用的是安全密钥/通行密钥、没有 6 位码，则需改用带「绕过 2FA」的 granular token。发布成功后本步骤会自动跳过（幂等），此后即可改用 OIDC。原始错误：${HIT}"
+              echo "::warning title=npm 包尚不存在 → 跳过 npm 发布::${NAME} 在 npm 上还没创建过（scope @echo-note 存在，但该包 404）。可信发布要求包已存在，所以**首次发布必须手动做一次**：cd packages/mcp-server && npm publish --access public。2FA 交互取决于账号方式：**安全密钥会自动弹浏览器认证**（实测无需任何额外参数）；**TOTP 账号**则加 --otp=<6 位码>；若既没提示又直接 403，就重新 npm login（走浏览器/安全密钥流程）再试。发布成功后本步骤会自动跳过（幂等），此后即可改用 OIDC。原始错误：${HIT}"
             else
               REASON="auth"
               echo "::warning title=npm 凭据未就绪 → 跳过 npm 发布::${HIT}"
@@ -792,7 +792,7 @@ jobs:
                   '```bash',
                   'cd packages/mcp-server',
                   'npm login                      # 若未登录',
-                  'npm publish --access public --otp=<6 位码>',
+                  'npm publish --access public    # 安全密钥会自动弹浏览器认证；TOTP 账号加 --otp=<6 位码>',
                   '```',
                   '',
                   '发布成功后本通道会自动跳过（幂等）。之后即可配置 Trusted Publisher 并删除 `NPM_TOKEN`。',
