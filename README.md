@@ -5,13 +5,14 @@
 
 - 目标：Gitea **1.26.4**（API 依据其 OpenAPI 规范 `swagger.v1.json` 逐项核对）
 - 侧边栏 4 个视图：仓库 / 我的 Issue / 我的 Pull Request / 通知
-  （仓库节点下含 **工作流** 分组：工作流定义、最近运行；点作业在**输出面板**看日志）
+  （仓库节点下含 **工作流** 分组：工作流定义、最近运行；点作业 / 工作流都在**只读标签**里看）
 - 「仓库」视图**按组织分组**、**当前工作区仓库置顶**，仓库名右侧带**铭牌**
   （语言 / 分支数 / 开放 Issue·PR / 工作流状态）
 - 仓库可**按名称或 `owner/repo` 搜索**（走服务端，覆盖全部仓库而非仅已加载的）
 - 列表支持**「加载更多」**，没有条数硬上限
 - **Issue / PR 详情交互面板**：回复、关闭、重新打开、评审、合并、检出分支
-- **工作流**（Gitea Actions）：列出工作流定义与运行记录、触发 / 重跑、在输出面板查看作业日志
+- **工作流**（Gitea Actions）：列出工作流定义与运行记录、触发 / 重跑、在主窗口的
+  **只读标签**里查看工作流定义与作业日志（可查找、可并排对比）
 - 29 个编辑器命令 + **35 个 AI 工具**
 - 两种 AI 接入方式：**MCP Server**（stdio）与 **语言模型工具**（`vscode.lm.registerTool`）
 
@@ -202,6 +203,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | 仓库 | `Gitea: 克隆仓库到工作区`、`Gitea: 新建仓库`、`Gitea: 新建分支` |
 | Issue / PR | `Gitea: 新建 Issue`、`Gitea: 打开 Issue 详情面板`、`Gitea: 回复 Issue / Pull Request`、`Gitea: 在详情面板中回复`、`Gitea: 关闭 / 重新打开` |
 | Pull Request | `Gitea: 新建 Pull Request`、`Gitea: 打开 Pull Request 详情面板`、`Gitea: 查看 Pull Request 差异`、`Gitea: 合并 Pull Request`、`Gitea: 检出 Pull Request 分支` |
+| 工作流 | `Gitea: 查看工作流定义`、`Gitea: 查看作业日志`、`Gitea: 触发工作流`、`Gitea: 重跑工作流` |
 | 通知 | `Gitea: 标记通知为已读`、`Gitea: 全部标记通知为已读` |
 | AI 接入 | `Gitea: 复制 MCP 配置到剪贴板`、`Gitea: 写入 CodeBuddy MCP 配置`、`Gitea: 写入 MCP 配置文件（工作区）` |
 

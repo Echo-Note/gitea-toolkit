@@ -279,15 +279,15 @@ export class RepoOperations {
    * 新加还没跑过的会缺席。列目录才是「定义」的完整来源。
    * @param owner 所属者
    * @param repo 仓库名
-   * @returns 工作流文件（路径 + 文件名），按目录顺序；目录不存在时跳过
+   * @returns 工作流文件（路径 + 文件名 + 网页地址），按目录顺序；目录不存在时跳过
    */
   public async listWorkflowFiles(
     owner: string,
     repo: string,
-  ): Promise<{ path: string; name: string }[]> {
+  ): Promise<{ path: string; name: string; htmlUrl: string }[]> {
     // `.gitea/workflows` 在前：那是 Gitea 推荐的位置，优先展示
     const dirs = ['.gitea/workflows', '.github/workflows'];
-    const found: { path: string; name: string }[] = [];
+    const found: { path: string; name: string; htmlUrl: string }[] = [];
     for (const dir of dirs) {
       // 目录不存在时 getContents 会 404 —— 那是正常情况（两种布局二选一），不当错误
       const entries = await this.getContents(owner, repo, dir).catch(() => null);
@@ -298,7 +298,13 @@ export class RepoOperations {
         if (entry.type !== 'file' || !/\.ya?ml$/i.test(entry.name)) {
           continue;
         }
-        found.push({ path: entry.path || `${dir}/${entry.name}`, name: entry.name });
+        found.push({
+          path: entry.path || `${dir}/${entry.name}`,
+          name: entry.name,
+          // contents 接口本身就返回该文件的网页地址 —— 直接用它，
+          // 省掉「为了拼 URL 还要再查一次默认分支」的请求
+          htmlUrl: entry.html_url ?? '',
+        });
       }
     }
     return found;

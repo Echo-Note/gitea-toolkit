@@ -7,6 +7,7 @@
 import * as vscode from 'vscode';
 import { describeError } from '../../core/errors';
 import { logError } from '../logger';
+import { openReadonlyDocument, safeFileName } from '../readonlyDocument';
 import type { GiteaNode } from '../views/nodes';
 import type { CommandDeps, CommandMap } from './types';
 
@@ -27,40 +28,22 @@ function num(payload: Record<string, unknown>, key: string): number {
   return typeof value === 'number' ? value : 0;
 }
 
-/** 作业日志的输出通道（懒创建，整个会话复用同一个）。 */
-let jobLogChannel: vscode.OutputChannel | undefined;
-
-/**
- * 取得作业日志的输出通道。
- * @param context 扩展上下文（用于登记销毁）
- * @returns 输出通道
- */
-function getJobLogChannel(context: vscode.ExtensionContext): vscode.OutputChannel {
-  if (!jobLogChannel) {
-    jobLogChannel = vscode.window.createOutputChannel('Gitea 工作流日志');
-    context.subscriptions.push(jobLogChannel);
-  }
-  return jobLogChannel;
-}
-
 /**
  * 创建工作流相关命令。
  * @param deps 命令依赖
  * @returns 命令映射
  */
 export function createActionCommands(deps: CommandDeps): CommandMap {
-  const { service, providers, context } = deps;
+  const { service, providers } = deps;
 
   return {
     /**
-     * 在**输出面板**里查看作业日志。
+     * 在**主窗口的只读标签**里查看作业日志。
      *
-     * 为什么不用编辑器文档：原先用 `openTextDocument({content})`，会生成一个**未保存的
-     * 临时文档** —— 标题是 `Untitled-1`、关闭时还要问要不要保存，既占编辑器标签，
-     * 也和「Issue / PR 走详情面板」的体验不一致，用户明确反馈过这一点。
-     *
-     * 日志本来就是「输出」类内容，放进输出面板更自然：不占编辑器、不会被误改、
-     * 随时用同一条命令就能切回来。
+     * 这个位置换过两次：最初是 `openTextDocument({content})` 生成的未保存文档
+     * （占标签、关闭时要问是否保存），后来改成输出面板（不占标签，但没有查找/替换、
+     * 不能并排对比）。现在用只读虚拟文档 —— **既在主窗口、又由平台保证只读**，
+     * 编辑器该有的查找/对比/复制全都可用。
      */
     'gitea.showJobLogs': async (node) => {
       const payload = payloadOf(node);
@@ -77,26 +60,72 @@ export function createActionCommands(deps: CommandDeps): CommandMap {
         { location: vscode.ProgressLocation.Notification, title: `正在获取「${name}」的日志…` },
         () => operations.actions.getJobLogs(owner, repo, jobId),
       );
-      const channel = getJobLogChannel(context);
-      // 每次清空：既避免长时间使用后无限增长，也保证重复点击同一个作业时看到的是它自己
-      channel.clear();
-      channel.appendLine(`# ${owner}/${repo} · ${name}（job ${jobId}）`);
-      channel.appendLine('');
       const hasLogs = logs.trim().length > 0;
-      channel.appendLine(
-        hasLogs
-          ? logs
-          : '（该作业没有可用的日志。常见原因：运行被取消、作业尚未开始执行，' +
-              '或服务端已清理日志 —— Gitea 会对日志做保留期清理。）',
+      const content = hasLogs
+        ? logs
+        : [
+            '（该作业没有可用的日志。）',
+            '',
+            '常见原因：',
+            '  · 运行被取消，或作业尚未开始执行',
+            '  · 服务端已清理日志 —— Gitea 会对作业日志做保留期清理，旧运行查不到',
+            '',
+          ].join('\n');
+      // 路径最后一段决定标签标题；前面几段（仓库、作业 ID）会出现在悬停提示里，
+      // 用来区分同名的作业
+      const document = await openReadonlyDocument(
+        [owner, repo, 'job', String(jobId), `${safeFileName(name)}.log`],
+        content,
       );
-      // 用 show() 而不是 show(true)：这里必须确保输出面板真的被打开并切到本通道，
-      // 让出焦点是次要的。
-      channel.show();
-      // 日志为空时额外给一条提示：否则面板里只有一行标题，看起来像「什么都没发生」。
-      // 实测镜像仓库的旧运行多半属于「日志已被 Gitea 清理」，这条提示能直接说明原因。
+      await vscode.window.showTextDocument(document, { preview: false });
       if (!hasLogs) {
+        // 空内容时额外说一句：否则标签里只有一段说明，容易被当成「什么都没发生」
         void vscode.window.showInformationMessage(
           `「${name}」没有可用的日志：运行可能已取消，或服务端已清理（Gitea 有保留期）。`,
+        );
+      }
+    },
+
+    /**
+     * 在只读标签里查看工作流定义（YAML 原文）。
+     *
+     * 为什么把「在浏览器打开」从左键默认动作换掉：用户点一条 `ci.yml` 时，
+     * 最想知道的是「这个工作流是什么」，跳浏览器既慢又离开了当前上下文。
+     * 浏览器入口保留在右键菜单里（`gitea.openInBrowser`）。
+     */
+    'gitea.showWorkflow': async (node) => {
+      const payload = payloadOf(node);
+      const owner = str(payload, 'owner');
+      const repo = str(payload, 'repo');
+      const workflowId = str(payload, 'workflowId');
+      const name = str(payload, 'name') || workflowId;
+      if (!owner || !repo || !workflowId) {
+        void vscode.window.showWarningMessage('该节点缺少工作流信息，请刷新视图后重试。');
+        return;
+      }
+      try {
+        const operations = await service.getOperations();
+        const file = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: `正在获取「${name}」…` },
+          () => operations.repos.getFileContent(owner, repo, workflowId),
+        );
+        const body = file.truncated
+          ? `${file.content}\n\n…（文件较大已截断，完整内容请在浏览器中打开）\n`
+          : file.content;
+        const fileName = safeFileName(workflowId.split('/').pop() ?? workflowId);
+        const document = await openReadonlyDocument(
+          [owner, repo, 'workflow', fileName],
+          body,
+          // 明确指定语言：自定义 scheme 不保证能按扩展名推断出 YAML
+          /\.ya?ml$/i.test(fileName) ? 'yaml' : undefined,
+        );
+        await vscode.window.showTextDocument(document, { preview: false });
+      } catch (error) {
+        logError('读取工作流定义失败', error);
+        void vscode.window.showErrorMessage(
+          `读取工作流定义失败：${describeError(error)}\n\n` +
+            '若该条目来自接口（而非文件列表），它可能没有可直接读取的文件路径 —— ' +
+            '可以用右键菜单的「在浏览器打开」查看。',
         );
       }
     },

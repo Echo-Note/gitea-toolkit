@@ -265,10 +265,13 @@ export function createActionWorkflowNode(payload: ActionWorkflowNodePayload): Gi
       ? `**${payload.name}**\n\n文件：\`${payload.workflowId}\`\n\n` +
           '> 该实例的 `GET /actions/workflows` 没有返回工作流列表（它只枚举 `.gitea/workflows`），\n' +
           '> 因此这里直接列出仓库里的工作流文件，**启用状态未知**。\n\n' +
-          `[在浏览器中打开](${payload.htmlUrl})`
-      : `**${payload.name}**${payload.state === 'active' ? '' : '（已停用）'}\n\n文件：\`${payload.workflowId}\`\n\n[在浏览器中打开](${payload.htmlUrl})`,
+          `点击查看定义内容 · 右键可触发 / 启停 / [在浏览器中打开](${payload.htmlUrl})`
+      : `**${payload.name}**${payload.state === 'active' ? '' : '（已停用）'}\n\n文件：\`${payload.workflowId}\`\n\n` +
+          `点击查看定义内容 · 右键可触发 / 启停 / [在浏览器中打开](${payload.htmlUrl})`,
   );
-  node.command = { command: 'gitea.openInBrowser', title: '在浏览器打开', arguments: [node] };
+  // 左键看「这个工作流是什么」，而不是跳浏览器：后者慢且离开当前上下文，
+  // 需要时右键菜单里仍有「在浏览器打开」
+  node.command = { command: 'gitea.showWorkflow', title: '查看定义内容', arguments: [node] };
   return node;
 }
 

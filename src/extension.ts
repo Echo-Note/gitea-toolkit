@@ -16,6 +16,7 @@ import { createCommands, registerCommands } from './vscode/commands/index';
 import { verifyCompatibility } from './vscode/compatibility';
 import { logDebug, logError, logInfo, logWarn, disposeLog } from './vscode/logger';
 import { autoWriteCodeBuddyConfig, repairCodeBuddyUserMcpConfig } from './vscode/mcpConfigWriter';
+import { registerReadonlyDocuments } from './vscode/readonlyDocument';
 import { GiteaService } from './vscode/service';
 import { StatusBarController } from './vscode/statusBar';
 import { autoCheckForUpdates } from './vscode/updateChecker';
@@ -48,6 +49,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   registerViews(context, providers);
+  // 只读虚拟文档（作业日志 / 工作流定义）：用平台的 TextDocumentContentProvider，
+  // 只读、标题、语言高亮都由 VS Code 保证，不需要自己实现查看器
+  registerReadonlyDocuments(context);
   registerCommands(context, createCommands({ context, service, providers }));
   registerAiIntegrations(context, service);
   registerStatusBar(context, service);

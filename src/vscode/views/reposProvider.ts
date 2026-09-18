@@ -308,8 +308,10 @@ export class ReposProvider extends BaseTreeProvider {
           name: api?.name ?? file.name,
           // 状态只在 API 给出时才显示，否则交给节点渲染成「状态未知」
           state: api?.state ?? '',
+          // 优先用 API 的条目页地址；文件条目用自己的网页地址（contents 接口已带）；
+          // 都没有才退回仓库的 Actions 页（够通用但不够精确，仅作兜底）
           htmlUrl:
-            api?.html_url ?? `${repoWebUrl(serverUrl, owner, repo)}/actions`,
+            api?.html_url || file.htmlUrl || `${repoWebUrl(serverUrl, owner, repo)}/actions`,
         }),
       );
     }
