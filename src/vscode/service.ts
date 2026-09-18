@@ -56,16 +56,14 @@ export class GiteaService implements vscode.Disposable {
   constructor(private readonly context: vscode.ExtensionContext) {
     this.disposables.push(
       this.changeEmitter,
+      // 兜底：本扩展是 SecretStorage 的唯一写入方，正常路径由命令调用 notifyChanged()
+      // 保证刷新时机确定；这里只防御性地覆盖「令牌被本扩展之外的方式改动」的极端情况。
       this.context.secrets.onDidChange((event) => {
         if (event.key === TOKEN_SECRET_KEY) {
-          this.invalidate();
-          this.changeEmitter.fire();
+          this.notifyChanged();
         }
       }),
-      onSettingsChanged(() => {
-        this.invalidate();
-        this.changeEmitter.fire();
-      }),
+      onSettingsChanged(() => this.notifyChanged()),
     );
   }
 
@@ -168,6 +166,21 @@ export class GiteaService implements vscode.Disposable {
     this.cachedUser = undefined;
     this.cachedVersion = undefined;
     this.cachedDefaultRepo = undefined;
+  }
+
+  /**
+   * 失效缓存并通知视图刷新。
+   *
+   * **为什么需要这个显式入口**：视图刷新原先只挂在 `secrets.onDidChange` 上，
+   * 而该事件由存储层派发，与写入真正生效之间**时序不确定** ——
+   * 事件可能在密钥可读之前触发，此时 `ensureClient()` 读不到令牌，
+   * 视图会渲染成「尚未设置访问令牌」，必须手动刷新才恢复。
+   *
+   * 由命令在 `await setToken(...)` **之后**调用，刷新时机才是确定的。
+   */
+  public notifyChanged(): void {
+    this.invalidate();
+    this.changeEmitter.fire();
   }
 
   /** 释放资源。 */

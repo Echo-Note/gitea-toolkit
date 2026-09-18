@@ -52,7 +52,10 @@ export function createAuthCommands(deps: CommandDeps): CommandMap {
       }
 
       await setToken(context, token.trim());
-      service.invalidate();
+      // 令牌已确认落盘，在此显式刷新视图。
+      // 不依赖 secrets.onDidChange 触发：该事件的时序不确定，可能在密钥可读之前派发，
+      // 导致视图渲染成「尚未设置访问令牌」，必须手动刷新才恢复。
+      service.notifyChanged();
       try {
         const user = await service.getCurrentUser(true);
         logInfo(`令牌校验通过，当前用户 ${user.login}`);
@@ -88,7 +91,7 @@ export function createAuthCommands(deps: CommandDeps): CommandMap {
         return;
       }
       await clearToken(context);
-      service.invalidate();
+      service.notifyChanged();
       logInfo('已清除访问令牌');
       void vscode.window.showInformationMessage('已清除 Gitea 访问令牌。');
     },
@@ -140,10 +143,9 @@ export function createAuthCommands(deps: CommandDeps): CommandMap {
 
     /** 刷新所有视图。 */
     'gitea.refresh': async () => {
-      service.invalidate();
-      for (const provider of Object.values(deps.providers)) {
-        provider.refresh();
-      }
+      // 与自动刷新共用 service.notifyChanged() 同一路径：
+      // 两者走同一段代码，才不会出现「手动有效、自动无效」这类行为分叉。
+      service.notifyChanged();
     },
   };
 }

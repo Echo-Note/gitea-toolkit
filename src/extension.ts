@@ -14,7 +14,7 @@ import { registerMcpServerProvider } from './ai/mcpProvider';
 import { readSettings } from './vscode/config';
 import { createCommands, registerCommands } from './vscode/commands/index';
 import { verifyCompatibility } from './vscode/compatibility';
-import { logError, logInfo, logWarn, disposeLog } from './vscode/logger';
+import { logDebug, logError, logInfo, logWarn, disposeLog } from './vscode/logger';
 import { autoWriteCodeBuddyConfig, repairCodeBuddyUserMcpConfig } from './vscode/mcpConfigWriter';
 import { GiteaService } from './vscode/service';
 import { StatusBarController } from './vscode/statusBar';
@@ -184,6 +184,9 @@ function registerAutoRefresh(
 ): void {
   context.subscriptions.push(
     service.onDidChange(() => {
+      // 统一刷新入口：手动「Gitea: 刷新所有视图」也走这里（见 authCommands 的 gitea.refresh）。
+      // 两条路径共用同一段代码，才不会出现「手动有效、自动无效」这类行为分叉。
+      logDebug(`令牌 / 配置变化，刷新 ${Object.keys(providers).length} 个视图`);
       for (const provider of Object.values(providers)) {
         provider.refresh();
       }
