@@ -764,15 +764,27 @@ jobs:
                 { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
               );
               if (raw && raw.trim()) {
-                // 去掉 gh 输出前缀里的时间戳，保留 job / 步骤名（那是有用信息）
+                // 去掉 ANSI 颜色码与 gh 输出前缀里的时间戳（保留 job / 步骤名，那是有用信息）
                 const lines = raw
                   .split('\n')
-                  .map((line) => line.replace(/^([^\t]*\t[^\t]*\t)?\d{4}-\d{2}-\d{2}T[\d:.]+Z /, ''));
-                // 「关键错误」优先取我们自己打的 ::error 注解 —— 那是写给人看的一句话结论；
-                // 没有再退回含 error / failed 的行
-                const annotated = lines.filter((line) => line.includes('::error'));
-                const fallback = lines.filter((line) => /\b(error|Error|ERROR|failed|Failure|Exception)\b/.test(line));
-                const picked = (annotated.length ? annotated : fallback).slice(-20);
+                  .map((line) => line
+                    .replace(/\x1b\[[0-9;]*m/g, '')
+                    .replace(/^([^\t]*\t[^\t]*\t)?\d{4}-\d{2}-\d{2}T[\d:.]+Z /, ''));
+                // ⚠️ 「关键错误」**不能**按 ::error 字面量匹配 —— gh 会把「执行的命令本身」
+                //    也打进日志，命中的于是变成我们脚本的源码，真正的错误反而被淹没（实测踩过）。
+                //    正确做法：取 runner **渲染后**的 ##[error] 注解（那才是写给人看的一句话结论），
+                //    并先剔除 echo 源码行；取不到再退回工具自身的错误输出。
+                const isNoise = (line) => line.includes('::error') || /^\s*echo\s+["']/.test(line);
+                const candidates = lines.filter((line) => !isNoise(line));
+                const annotated = candidates.filter((line) => line.includes('##[error]'));
+                // 底层工具自己的报错（如 `npm error 403 ... bypass 2fa`）——最该露出来的就是这种行，
+                // 光有我们自己写的结论不够。排除 ##[error] 以免与上面重复。
+                const toolErrors = candidates.filter((line) =>
+                  !line.includes('##[error]') &&
+                  /(npm error|Error:|ERROR|error\[|Failed|FAILED|Exception|not found|denied|refused)/.test(line));
+                const picked = annotated.length
+                  ? annotated.slice(-6).concat(toolErrors.length ? ['', '…底层错误输出：', ...toolErrors.slice(-8)] : [])
+                  : toolErrors.slice(-20);
                 const full = lines.join('\n');
                 const MAX = 55000; // issue 正文上限 65536，留出余量
                 const clipped = full.length > MAX;
