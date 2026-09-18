@@ -543,7 +543,7 @@ release          三个都成功后才创建 tag 与 Release
 | --- | --- | --- |
 | **`OVSX_PAT`** | open-vsx.org 生成的访问令牌 | Open VSX |
 | **`VSCE_PAT`** | Azure DevOps PAT（Organization 须选 *All accessible organizations*，作用域须含 *Marketplace → Manage*） | VS Code Marketplace |
-| **`NPM_TOKEN`** | npmjs.org 的 **granular access token，必须勾选「绕过 2FA」**（账号开了 2FA 时缺它会被 403 拒绝）；也可改用下面的 OIDC 可信发布、完全不配此项 | npm（公共 registry） |
+| **`NPM_TOKEN`** | **不推荐长期使用** —— npm 在令牌页会直接警告其安全风险（它是对的）。仅作过渡：建一个勾了「绕过 2FA」的 granular token，**只用于首次发布，成功后立即撤销**；正式做法是用下面的 OIDC 可信发布、完全不配此项 | npm（公共 registry） |
 
 设计上的三点（三个目标一致）：
 
@@ -577,6 +577,11 @@ release          三个都成功后才创建 tag 与 Release
 >
 > ⚠️ 排查 2FA 时别用**恢复码**登录：会触发账号 **72 小时临时安全冻结**，
 > 期间无法发布包、创建令牌或改账号设置。
+>
+> ⚠️ 若确实要建「绕过 2FA」的令牌 —— npm 会在令牌页警告它的安全风险，**那是对的**：
+> 能拿到 6 位码就优先用 `--otp`，根本不用建令牌。非要建时：权限只给 `@echo-note` 的
+> read + write（包尚不存在时无法选单个包，只能按 scope 授权）、有效期选最短、
+> **发布成功后立刻撤销**，正式通道仍应迁到 OIDC。
 >
 > **凭据类错误不再阻断发版**：npm 的 401/403/2FA 类失败会降级为「提示 + 跳过」，
 > 不会连累 GitHub Release（本项目踩过：市场已发布、Release 却因 npm 卡住而建不出来）。
