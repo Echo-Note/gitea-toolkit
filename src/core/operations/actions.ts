@@ -153,22 +153,24 @@ export class ActionOperations {
   public async listRuns(
     options: ListActionRunsOptions,
   ): Promise<GiteaListResult<GiteaActionWorkflowRun>> {
-    const result = await this.client.requestWithMeta<RunsResponse>(
+    // 走 requestPaged：服务端单页上限为 max_response_items（默认 50），
+    // 想要更多必须真的翻页，只调大 limit 会被静默截断。
+    return this.client.requestPaged<GiteaActionWorkflowRun>(
       'GET',
       actionsPath(options.owner, options.repo, '/runs'),
       {
+        limit: options.limit ?? 30,
+        startPage: options.page ?? 1,
+        extract: (data) => (data as RunsResponse | undefined)?.workflow_runs ?? [],
         query: {
           event: options.event,
           branch: options.branch,
           status: options.status,
           actor: options.actor,
           head_sha: options.headSha,
-          page: options.page ?? 1,
-          limit: options.limit ?? 30,
         },
       },
     );
-    return { items: result.data?.workflow_runs ?? [], pageInfo: result.pageInfo };
   }
 
   /**
@@ -262,18 +264,16 @@ export class ActionOperations {
   public async listArtifacts(
     options: ListArtifactsOptions,
   ): Promise<GiteaListResult<GiteaActionArtifact>> {
-    const result = await this.client.requestWithMeta<ArtifactsResponse>(
+    return this.client.requestPaged<GiteaActionArtifact>(
       'GET',
       actionsPath(options.owner, options.repo, '/artifacts'),
       {
-        query: {
-          name: options.name,
-          page: options.page ?? 1,
-          limit: options.limit ?? 30,
-        },
+        limit: options.limit ?? 30,
+        startPage: options.page ?? 1,
+        extract: (data) => (data as ArtifactsResponse | undefined)?.artifacts ?? [],
+        query: { name: options.name },
       },
     );
-    return { items: result.data?.artifacts ?? [], pageInfo: result.pageInfo };
   }
 }
 

@@ -108,29 +108,35 @@ export class RepoOperations {
    * @returns 仓库列表与分页信息
    */
   public async list(options: ListReposOptions = {}): Promise<GiteaListResult<GiteaRepository>> {
-    const page = options.page ?? 1;
+    // 三个分支都走 requestPaged：服务端单页上限为 max_response_items（默认 50），
+    // 想要更多必须真的翻页，只调大 limit 会被静默截断。
     const limit = options.limit ?? 50;
+    const startPage = options.page ?? 1;
 
     if (options.search) {
-      const result = await this.client.requestWithMeta<unknown>('GET', '/repos/search', {
-        query: { q: options.search, page, limit, sort: options.sort, order: options.order },
+      return this.client.requestPaged<GiteaRepository>('GET', '/repos/search', {
+        limit,
+        startPage,
+        extract: (data) => unwrapSearchResults<GiteaRepository>(data),
+        query: { q: options.search, sort: options.sort, order: options.order },
       });
-      return { items: unwrapSearchResults<GiteaRepository>(result.data), pageInfo: result.pageInfo };
     }
 
     const owner = options.owner?.trim();
     if (owner && !options.mine) {
       const path = await this.resolveOwnerReposPath(owner);
-      const result = await this.client.requestWithMeta<GiteaRepository[]>('GET', path, {
-        query: { page, limit },
+      return this.client.requestPaged<GiteaRepository>('GET', path, {
+        limit,
+        startPage,
+        extract: (data) => (data as GiteaRepository[]) ?? [],
       });
-      return { items: result.data ?? [], pageInfo: result.pageInfo };
     }
 
-    const result = await this.client.requestWithMeta<GiteaRepository[]>('GET', '/user/repos', {
-      query: { page, limit },
+    return this.client.requestPaged<GiteaRepository>('GET', '/user/repos', {
+      limit,
+      startPage,
+      extract: (data) => (data as GiteaRepository[]) ?? [],
     });
-    return { items: result.data ?? [], pageInfo: result.pageInfo };
   }
 
   /**
@@ -178,12 +184,15 @@ export class RepoOperations {
     page = 1,
     limit = 50,
   ): Promise<GiteaListResult<GiteaBranch>> {
-    const result = await this.client.requestWithMeta<GiteaBranch[]>(
+    return this.client.requestPaged<GiteaBranch>(
       'GET',
       `/repos/${enc(owner)}/${enc(repo)}/branches`,
-      { query: { page, limit } },
+      {
+        limit,
+        startPage: page,
+        extract: (data) => (data as GiteaBranch[]) ?? [],
+      },
     );
-    return { items: result.data ?? [], pageInfo: result.pageInfo };
   }
 
   /**
@@ -220,20 +229,20 @@ export class RepoOperations {
     repo: string,
     options: ListCommitsOptions = {},
   ): Promise<GiteaListResult<GiteaCommit>> {
-    const result = await this.client.requestWithMeta<GiteaCommit[]>(
+    return this.client.requestPaged<GiteaCommit>(
       'GET',
       `/repos/${enc(owner)}/${enc(repo)}/commits`,
       {
+        limit: options.limit ?? 30,
+        startPage: options.page ?? 1,
+        extract: (data) => (data as GiteaCommit[]) ?? [],
         query: {
           sha: options.ref,
           path: options.path,
           stat: options.withFiles ? 'true' : undefined,
-          page: options.page ?? 1,
-          limit: options.limit ?? 30,
         },
       },
     );
-    return { items: result.data ?? [], pageInfo: result.pageInfo };
   }
 
   /**

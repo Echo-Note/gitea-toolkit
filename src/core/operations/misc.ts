@@ -50,16 +50,18 @@ export class MiscOperations {
   public async listNotifications(
     options: ListNotificationsOptions = {},
   ): Promise<GiteaListResult<GiteaNotificationThread>> {
-    const result = await this.client.requestWithMeta<GiteaNotificationThread[]>('GET', '/notifications', {
+    // 走 requestPaged 而不是单次请求：服务端单页上限为 max_response_items（默认 50），
+    // 想要更多必须真的翻页，只调大 limit 会被静默截断。
+    return this.client.requestPaged<GiteaNotificationThread>('GET', '/notifications', {
+      limit: options.limit ?? 50,
+      startPage: options.page ?? 1,
+      extract: (data) => (data as GiteaNotificationThread[]) ?? [],
       query: {
         all: options.includeRead ? 'true' : undefined,
         'status-types': options.includeRead ? ['unread', 'read', 'pinned'] : ['unread', 'pinned'],
         'subject-type': options.subjectTypes,
-        page: options.page ?? 1,
-        limit: options.limit ?? 50,
       },
     });
-    return { items: result.data ?? [], pageInfo: result.pageInfo };
   }
 
   /**

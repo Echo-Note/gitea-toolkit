@@ -6,7 +6,15 @@
  */
 import { GiteaApiError, GiteaConfigError } from './errors';
 import { httpRequest } from './http';
-import type { GiteaPageInfo } from './types';
+import type { GiteaListResult, GiteaPageInfo } from './types';
+
+/**
+ * 单页条数的兜底上限。
+ *
+ * Gitea 的服务端配置 `max_response_items`（`GET /settings/api` 可查）默认为 50，
+ * 超过的部分会被服务端**静默丢弃**。这里用同一默认值，避免发出注定被截断的请求。
+ */
+export const DEFAULT_MAX_RESPONSE_ITEMS = 50;
 
 /** 客户端构造参数。 */
 export interface GiteaClientOptions {
@@ -80,6 +88,63 @@ export class GiteaClient {
   public async request<T>(method: string, path: string, options: RequestOptions = {}): Promise<T> {
     const result = await this.requestWithMeta<T>(method, path, options);
     return result.data;
+  }
+
+  /**
+   * 按页收集列表，直到凑够 `limit` 条、或服务端表示没有下一页。
+   *
+   * **为什么需要它**：Gitea 对单次请求的 `limit` 有**服务端上限**
+   * （`GET /settings/api` 的 `max_response_items`，官方默认 50），
+   * 超出部分会被**静默丢弃** —— 请求 `limit=200` 实际只回 50 条，且不报任何错。
+   * 所以「想拿 200 条」必须真的发多次请求，只调大 limit 是无效的。
+   *
+   * @param method HTTP 方法
+   * @param path API 路径
+   * @param options 请求选项。`query` 里**不要自带 `page` / `limit`**，由本方法接管
+   * @returns 收集到的条目（最多 `limit` 条）与最后一页的分页信息
+   */
+  public async requestPaged<T>(
+    method: string,
+    path: string,
+    options: RequestOptions & {
+      /** 期望收集的总条数。 */
+      limit: number;
+      /** 从响应体里取出条目数组。 */
+      extract: (data: unknown) => T[];
+      /** 覆盖单页上限；默认按 {@link DEFAULT_MAX_RESPONSE_ITEMS}。 */
+      maxPerPage?: number;
+      /** 起始页，默认 1。调用方显式指定 page 时透传，避免改变既有语义。 */
+      startPage?: number;
+    },
+  ): Promise<GiteaListResult<T>> {
+    const perPage = Math.max(
+      1,
+      Math.min(options.limit, options.maxPerPage ?? DEFAULT_MAX_RESPONSE_ITEMS),
+    );
+    const items: T[] = [];
+    let page = Math.max(1, options.startPage ?? 1);
+    let pageInfo: GiteaPageInfo = { hasNextPage: false };
+
+    while (items.length < options.limit) {
+      const result = await this.requestWithMeta<unknown>(method, path, {
+        query: { ...options.query, page, limit: perPage },
+        body: options.body,
+        responseType: options.responseType,
+        timeoutMs: options.timeoutMs,
+        signal: options.signal,
+        headers: options.headers,
+      });
+      const batch = options.extract(result.data) ?? [];
+      items.push(...batch);
+      pageInfo = result.pageInfo;
+      // 空批次或没有下一页就停，避免服务端行为异常时无限翻页
+      if (batch.length === 0 || !result.pageInfo.hasNextPage) {
+        break;
+      }
+      page += 1;
+    }
+
+    return { items: items.slice(0, options.limit), pageInfo };
   }
 
   /**

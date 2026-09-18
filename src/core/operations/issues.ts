@@ -87,15 +87,20 @@ export class IssueOperations {
    * @returns Issue 列表与分页信息
    */
   public async list(options: ListIssuesOptions = {}): Promise<GiteaListResult<GiteaIssue>> {
-    const page = options.page ?? 1;
-    const limit = options.limit ?? 50;
+    // 走 requestPaged：服务端单页上限为 max_response_items（默认 50），
+    // 想要更多必须真的翻页，只调大 limit 会被静默截断。
     const state = options.state ?? 'open';
+    const limit = options.limit ?? 50;
+    const startPage = options.page ?? 1;
 
     if (options.owner && options.repo) {
-      const result = await this.client.requestWithMeta<GiteaIssue[]>(
+      return this.client.requestPaged<GiteaIssue>(
         'GET',
         `/repos/${enc(options.owner)}/${enc(options.repo)}/issues`,
         {
+          limit,
+          startPage,
+          extract: (data) => (data as GiteaIssue[]) ?? [],
           query: {
             state,
             type: options.type,
@@ -103,15 +108,15 @@ export class IssueOperations {
             labels: options.labels,
             milestones: options.milestones,
             sort: options.sort,
-            page,
-            limit,
           },
         },
       );
-      return { items: result.data ?? [], pageInfo: result.pageInfo };
     }
 
-    const result = await this.client.requestWithMeta<GiteaIssue[]>('GET', '/repos/issues/search', {
+    return this.client.requestPaged<GiteaIssue>('GET', '/repos/issues/search', {
+      limit,
+      startPage,
+      extract: (data) => (data as GiteaIssue[]) ?? [],
       query: {
         state,
         type: options.type,
@@ -124,11 +129,8 @@ export class IssueOperations {
         review_requested: options.reviewRequestedMe ? 'true' : undefined,
         reviewed: options.reviewedByMe ? 'true' : undefined,
         owner: options.owner,
-        page,
-        limit,
       },
     });
-    return { items: result.data ?? [], pageInfo: result.pageInfo };
   }
 
   /**

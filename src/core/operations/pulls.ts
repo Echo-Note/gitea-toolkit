@@ -81,10 +81,15 @@ export class PullOperations {
    * @returns PR 列表
    */
   public async list(options: ListPullsOptions): Promise<GiteaListResult<GiteaPullRequest>> {
-    const result = await this.client.requestWithMeta<GiteaPullRequest[]>(
+    // 走 requestPaged：服务端单页上限为 max_response_items（默认 50），
+    // 想要更多必须真的翻页，只调大 limit 会被静默截断。
+    return this.client.requestPaged<GiteaPullRequest>(
       'GET',
       `/repos/${enc(options.owner)}/${enc(options.repo)}/pulls`,
       {
+        limit: options.limit ?? 50,
+        startPage: options.page ?? 1,
+        extract: (data) => (data as GiteaPullRequest[]) ?? [],
         query: {
           state: options.state ?? 'open',
           sort: options.sort,
@@ -92,12 +97,9 @@ export class PullOperations {
           base: options.base,
           labels: options.labels,
           milestone: options.milestone,
-          page: options.page ?? 1,
-          limit: options.limit ?? 50,
         },
       },
     );
-    return { items: result.data ?? [], pageInfo: result.pageInfo };
   }
 
   /**
