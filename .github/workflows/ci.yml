@@ -70,6 +70,12 @@ jobs:
         # VS Code 对拼错的图标名是静默忽略的，必须在 CI 拦住
         run: npm run check:icons
 
+      - name: 校验 CHANGELOG（无未填占位、版本号与 package.json 一致）
+        # CHANGELOG 会进 .vsix 并显示在扩展市场的 Changelog 标签页上，占位文本会被用户
+        # 看到（0.8.1 发生过：bump-version 插入的「待补充」没人写就发了出去）。
+        # 本步骤放在 verify 里，而 release 依赖 package 依赖 verify，因此能挡住发布。
+        run: npm run check:changelog
+
   package:
     name: 构建打包
     needs: verify

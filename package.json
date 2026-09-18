@@ -1942,7 +1942,8 @@
     "preview:icon": "node scripts/preview-icon.mjs",
     "preview:tree": "node scripts/preview-tree.mjs",
     "check:icons": "node scripts/preview-tree.mjs --check",
-    "ci": "npm run compile && npm run lint && npm run check:tools && npm run check:icons && npm run check:workflows",
+    "check:changelog": "node scripts/check-changelog.mjs",
+    "ci": "npm run compile && npm run lint && npm run check:tools && npm run check:icons && npm run check:changelog && npm run check:workflows",
     "check:workflows": "node scripts/check-workflows.mjs"
   },
   "dependencies": {

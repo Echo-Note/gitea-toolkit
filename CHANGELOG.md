@@ -72,12 +72,37 @@
 - 新增 `src/vscode/views/repoBadge.ts`：**刻意不依赖 `vscode` 模块**（与 `icons.ts` 同一约定），
   这样铭牌逻辑能用真实数据离线渲染预览，而不是只能在扩展宿主里跑。
 
+### 工程
+
+- **新增 `npm run check:changelog`，防止未填写的 CHANGELOG 区块再次发给用户。**
+  `scripts/bump-version.mjs` 升版本时会在 CHANGELOG 顶部插入一个「待补充」区块，
+  而**它不会自己消失** —— 0.8.1 就是这么把占位文本发到了市场（该条目本次已补上）。
+  CHANGELOG 会进 `.vsix`、也会显示在扩展市场的 Changelog 标签页里，
+  所以这不是内部问题，而是用户看得见的内容。
+
+  校验两件事：一是没有未填占位（`待补充` / `待填写` / `TODO:` …），
+  二是最新版本标题与 `package.json` 的 `version` 一致。
+  已接入 `npm run ci`，并且是 CI `verify` job 的一步 —— 依赖链是
+  `release → package → verify`，因此**能真正挡住发布**，而不只是发个警告。
 
 ## [0.8.1] - 2026-09-18
 
 ### 变更
 
-- 待补充：请填写本次发布的主要改动，或将其归入更合适的分类（新增 / 修复 / 变更）。
+- **补齐各处描述文本里遗漏的 Actions**。0.8.0 新增了 Actions 侧边栏视图，
+  但对外的文案还停在「仓库 / Issue / PR / 通知」。涉及四处：
+
+  - `package.json` 与 `packages/mcp-server/package.json` 的 `description`
+  - `src/ai/mcpConfig.ts` 写入 `.codebuddy/mcp.json` 时用的 MCP Server 说明
+  - `src/mcpServer/main.ts` 的 `--help` 用法文本
+
+  > 来源是验证「匿名安装」通路时，肉眼看到 `--help` 输出与实际能力不符 ——
+  > 能力已经加上、对外文案没跟上。这类遗漏不影响功能，但 `description` 会直接显示在
+  > **扩展市场页面**上，`--help` 会显示在 `npx` 用户的终端里。
+  >
+  > 本版本发布时该条目未及时补写，留成了占位文本并发到了市场（0.8.1 的
+  > Changelog 标签页曾显示「待补充」）。现已补上，并加了 `npm run check:changelog`
+  > 防止再次发生 —— 详见 0.8.2 的说明。
 
 ## [0.8.0] - 2026-09-18
 

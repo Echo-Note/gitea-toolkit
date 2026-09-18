@@ -429,6 +429,7 @@ npm run compile       # tsc --noEmit 类型检查
 npm run lint          # ESLint
 npm run check:tools   # CI：校验 package.json 工具清单与代码定义是否一致
 npm run check:icons   # CI：校验所有 codicon 图标名真实存在
+npm run check:changelog  # CI：校验 CHANGELOG 无未填占位、版本号与 package.json 一致
 
 # 图标（VS Code 对拼错的图标名是静默忽略的，必须能离线核对，见下文「图标」一节）
 npm run preview:icon  # 生成插件图标预览页（不同尺寸 / 明暗主题）
