@@ -37,6 +37,12 @@ env:
   # 扩展宿主内置的 Node 版本较旧，esbuild 的 target 是 node20；
   # CI 用当前 LTS（22）验证，产物本身向下兼容 node20。
   NODE_VERSION: '22'
+  # Python **构建**用的版本：取最低支持版本（= python/pyproject.toml 里 requires-python 的
+  # 下界），这样「用最低版本也能构建出产物」本身也是被验证过的。产物是 py3-none-any
+  # （纯 Python），构建解释器不改变兼容范围。
+  # 注意：**测试**用的版本不在这里，而在 python-test job 的 matrix 里（下界 + 最新稳定
+  # 两档）—— 测试要多版本，构建只需要一个，刻意分开。
+  PYTHON_BUILD_VERSION: '3.10'
 
 jobs:
   verify:
@@ -76,9 +82,72 @@ jobs:
         # 本步骤放在 verify 里，而 release 依赖 package 依赖 verify，因此能挡住发布。
         run: npm run check:changelog
 
+  python-test:
+    name: Python 测试（${{ matrix.python-version }}）
+    # 独立成 job，而不是把测试塞进 verify：**matrix 是 job 级的**，塞进 verify 会让
+    # tsc / ESLint / 各项清单校验也跟着按版本数重复跑一遍（它们与 Python 版本无关）。
+    # 拆开后它与 verify 并行，既不增加墙钟时间，也不浪费 runner。
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # 一个版本失败不取消其他版本：一次运行就能看清「到底哪个版本不行」，
+      # 而不是被 fail-fast 打断、只剩第一条错误。
+      fail-fast: false
+      matrix:
+        # 只取两端：
+        #   - **最低支持版本**（= pyproject 里 requires-python 的下界）：能挡住误用更高
+        #     版本才有的语法/标准库（例如 3.12 才有的 itertools.batched）。
+        #   - **当前最新稳定版**：能挡住被移除的标准库（3.13 起移除了一批）。
+        # 中间版本几乎不提供额外信息 —— 任何特性都有明确的引入版本，会被下界拦下。
+        # 刻意不含预览版（如 3.15.0aN）：发布物不该因一个尚未稳定的解释器而变红。
+        python-version: ['3.10', '3.14']
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 安装 Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 运行 Python 侧测试
+        # `python/` 是**会被自动发布到 PyPI 的产物**，所以它的测试必须在发布之前跑过 ——
+        # 否则 CI 就是「自动发布一个从没验证过的包」。本 job 与 verify 同为发布链路的
+        # 上游（package 依赖它俩），因此同样能挡住发布（与 check:changelog 同理）。
+        #
+        # 用 `pip install ./python` 而不是设 PYTHONPATH：顺带验证了**打包配置本身**
+        # （hatchling 的 src 布局声明是否正确），且测试跑的是**安装后的包** ——
+        # 与用户 `uvx gitea-toolkit-mcp` 装到的是同一个东西。
+        #
+        # 测试里读 TS 源码做常量比对用的是 `Path(__file__).parents[2]`（不依赖 CWD），
+        # 因此从仓库根目录跑没有路径问题。
+        run: |
+          set -euo pipefail
+          python -m pip install ./python
+          python -m unittest discover -s python/tests -v
+
+      - name: 冒烟测试：已安装的命令行入口与版本上报
+        # 为什么单独加这一步：单元测试 import 的是包内模块，走不到 **console script**
+        # 与版本上报这条路径 —— 而 0.9.3 发布前踩的 bug 恰好就在这里：包装的是新版本，
+        # `--version` 却报着硬编码的旧版本号（装到 0.9.3、它显示 0.9.1），直到用户
+        # 实测才发现。下面把「pyproject / 包内 __version__ / 命令行上报」三者对齐关系
+        # 机械化，避免同类问题再靠人眼发现。
+        run: |
+          set -euo pipefail
+          EXPECTED="$(python -c "import pathlib,re;print(re.search(r'^version = \"(.*)\"$', pathlib.Path('python/pyproject.toml').read_text(), re.M).group(1))")"
+          IN_PKG="$(python -c "import gitea_toolkit_mcp as m; print(m.__version__)")"
+          CLI="$(gitea-toolkit-mcp --version | awk '{print $NF}')"
+          echo "  pyproject=${EXPECTED} ｜ 包内 __version__=${IN_PKG} ｜ 命令行上报=${CLI}"
+          if [ "${EXPECTED}" != "${IN_PKG}" ] || [ "${EXPECTED}" != "${CLI}" ]; then
+            echo "::error title=版本号三处不一致::pyproject=${EXPECTED}、包内 __version__=${IN_PKG}、命令行=${CLI}（检查 scripts/bump-version.mjs 的 python 版本同步）"
+            exit 1
+          fi
+
   package:
     name: 构建打包
-    needs: verify
+    # 依赖两个上游：JS 侧校验（verify）与 Python 侧多版本测试（python-test）。
+    # 两者都是发布物的前置条件，都通过才打包、也才可能发布。
+    needs: [verify, python-test]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -98,6 +167,24 @@ jobs:
         # 关键：CI 里必须跳过版本号递增。
         # 否则每次构建都会改写 package.json 与 CHANGELOG.md，且版本号会随流水线无意义地涨。
         run: SKIP_VERSION_BUMP=1 npm run package
+
+      - name: 安装 Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_BUILD_VERSION }}
+
+      - name: 构建 Python 发行包（wheel + sdist）
+        # 在 package job 里构建、由 publish-pypi 复用，理由与 VSIX 相同：PyPI 官方
+        # action 也建议「构建与发布分离」，且这样三个发布物（扩展 / npm 包 / PyPI 包）
+        # 出自同一次运行、同一个版本号（版本一致性由 verify 里的 check:changelog 强制）。
+        # 用 PyPA 的 build 而不是引入 uv：少一个第三方 action，且它是「按
+        # pyproject.toml 构建」的标准做法（本包用 hatchling 作后端）。
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade build
+          cd python
+          python -m build
+          ls -lh dist/
 
       - name: 生成校验和
         # 发布物就两样：.vsix 本身 + 独立校验和。
@@ -128,6 +215,18 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: 上传 Python 发行包
+        # 独立成一个 artifact，而不是混进 gitea-toolkit-vsix：那个名字专指扩展产物，
+        # 混装会让下游 job 里 `sha256sum -c SHA256SUMS` 的语义变含糊。
+        uses: actions/upload-artifact@v7
+        with:
+          name: gitea-toolkit-pypi-dist
+          path: |
+            python/dist/*.whl
+            python/dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
       - name: 上传构建产物（可选，便于排查打包差异）
         if: failure()
         uses: actions/upload-artifact@v7
@@ -140,7 +239,7 @@ jobs:
   resolve:
     name: 解析版本与发布状态
     needs: package
-    # 为什么单独抽一个 job：三个市场要**并行**发布，而并行的前提是各自成一个 job；
+    # 为什么单独抽一个 job：各发布通道要**并行**发布，而并行的前提是各自成一个 job；
     # 而它们都需要同一份「版本号 + 该版本是否已经发过」的判断，所以放在这里共享。
     #
     # 「是否发版」由「版本号是否变过」决定：若 package.json 的版本已有对应 Release 就跳过。
@@ -178,13 +277,13 @@ jobs:
   publish-ovsx:
     name: 发布到 Open VSX
     needs: [package, resolve]
-    # 三个市场**各自独立成 job、并行发布**。
+    # 三个市场**各自独立成 job、并行发布**（PyPI 通道同理，见 publish-pypi）。
     # 原先它们是同一个 job 里连续的三步 —— 那样不但串行，而且**任一步失败会让后面的步骤
     # 被整体跳过**：例如 Open VSX 报错会导致 Marketplace 压根不去尝试发布。拆开后互不牵连。
     #
     # ⚠️ 但「市场发布必须先于创建 Release」这条不变：Release 是否存在，正是本流程判断
     #    「该版本是否已发」的依据（见 resolve job）。下面的 release job 用 needs 保证
-    #    自己一定在这三个 job 之后才运行。
+    #    自己一定在这些发布 job 之后才运行。
     #
     # CodeBuddy 的扩展源是 Open VSX（见 README「发布到扩展市场」），所以这是主通道。
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
@@ -515,12 +614,115 @@ jobs:
           fi
           exit 1
 
+  publish-pypi:
+    name: 发布到 PyPI
+    needs: [package, resolve]
+    # 与三个市场同理：独立成 job 以便并行，且必须排在创建 Release 之前
+    # （Release 是否存在就是本流程判断「该版本是否已发」的依据，见 resolve job）。
+    #
+    # 认证走 **OIDC 可信发布（Trusted Publishing）**：不需要任何长期令牌，因此不存在
+    # 「密钥过期」这类问题（对比 VSCE_PAT 的 2026-12-01 时限）。只需在 PyPI 配一次
+    # 待发布者（Account settings → Publishing → Add a pending publisher）：
+    #
+    #   PyPI Project Name = gitea-toolkit-mcp
+    #   Owner             = Echo-Note
+    #   Repository name   = gitea-toolkit
+    #   Workflow name     = ci.yml      ← 必须与 workflow **文件名**完全一致（不含路径）
+    #   Environment name  = （留空）     ← 本 job 刻意不声明 environment，两边必须一致
+    #
+    # 五个字段必须与实际运行值完全一致，否则 OIDC 令牌校验会失败（报错只说"身份不匹配"）。
+    # 尚未在 PyPI 创建过本项目也能配 —— pending publisher 正是为首次发布准备的。
+    #
+    # ⚠️ 未配置时本 job 会**失败**，而不是静默跳过 —— 与 npm 通道同样的取舍：配置类失败
+    #    降级为跳过会让 job 显示 success 却根本没发布（本项目真实教训）。失败后 Release
+    #    不会创建 → 该版本仍算「未发过」→ 配好 publisher 后重跑本运行即可补齐（各通道幂等）。
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # ⚠️ 可信发布的必需项：缺它 action 无法向 PyPI 表明身份（官方文档明确要求）。
+      #    只加在发布 job 上，不要提到 workflow 级 —— 减少不必要的凭据暴露面。
+      id-token: write
+    outputs:
+      result: ${{ steps.publish.outputs.result }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 下载已构建的 Python 发行包
+        uses: actions/download-artifact@v7
+        with:
+          name: gitea-toolkit-pypi-dist
+          # 落到独立子目录：publish action 会把该目录里的**所有**文件交给 twine，
+          # 若与 vsix 等其他产物同处一个目录，会被一并误传。
+          path: pypi-dist
+
+      - name: 校验产物并判断是否已发布
+        id: check
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.resolve.outputs.version }}"
+          NAME="$(sed -n 's/^name = "\(.*\)"$/\1/p' python/pyproject.toml | head -1)"
+          # 下面的 exists 输出**只在本版本确已在 PyPI 上时**才写 true；未设置即视为未发布，
+          # 后续步骤一律按 `!= 'true'` 判断 —— 因此不必先写一个 false（避免依赖
+          # 「同一个 key 重复写、以最后一个为准」这种隐式行为）。
+
+          # 1) 产物必须与本次版本号对得上。构建发生在 package job，这里是防呆：
+          #    若版本漏同步（例如只升了 package.json），宁可在此失败，也不要把
+          #    旧版本的包发上去 —— PyPI 的版本号一旦占用就**不能重发**。
+          shopt -s nullglob
+          wheels=(pypi-dist/*-"${VERSION}"-*.whl)
+          sdists=(pypi-dist/*-"${VERSION}".tar.gz)
+          if [ "${#wheels[@]}" -ne 1 ] || [ "${#sdists[@]}" -ne 1 ]; then
+            echo "::error title=PyPI 产物与版本不符::pypi-dist 中对应 v${VERSION} 的 wheel/sdist 不是各 1 个"
+            ls -l pypi-dist/ || true
+            exit 1
+          fi
+
+          # 2) 幂等：该版本已在 PyPI 上就跳过（典型场景是 job 失败后重跑）。
+          #    查公开 JSON 接口即可，不需要任何凭据；项目/版本还不存在时它返回 404，
+          #    正好落到「未发布」分支（首次发布就是这种情况）。
+          if curl -sf --max-time 20 "https://pypi.org/pypi/${NAME}/json" \
+               | VERSION="${VERSION}" python3 -c "import json,os,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('releases',{}).get(os.environ['VERSION']) else 1)"; then
+            echo "::notice title=跳过 PyPI 发布::${NAME} ${VERSION} 已存在。"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 发布到 PyPI（可信发布）
+        if: steps.check.outputs.exists != 'true'
+        # 用 PyPA 官方 action：它负责「取 OIDC 身份 → 换短期令牌 → 上传」，并打印项目链接；
+        # 默认还会生成 PEP 740 数字证明（与 npm 通道的 --provenance 对应）。
+        #
+        # ⚠️ 版本钉到精确 tag，而不用官方文档里常见的 `@release/v1`：分支 ref 会随上游变化
+        #    （该仓库的 master 分支版本已 sunset），且本仓库的 check:workflows 要求
+        #    uses 形如 owner/repo@ref —— 带斜杠的 `@release/v1` 会被它判为非法。
+        #    升级版本时改这一行即可（tag 见 github.com/pypa/gh-action-pypi-publish/releases）。
+        uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          packages-dir: pypi-dist/
+          # 幂等兜底：只覆盖「上一步查完索引之后、上传之前」被并发插入的极端情况。
+          # 常规重跑在上一步就已经以 exists 退出，不会走到这里。
+          skip-existing: true
+
+      - name: 汇总结果
+        id: publish
+        # 单独一个步骤写 job 输出：上面的发布步骤可能被 if 跳过（此时它不会写输出，
+        # 直接引用会拿到空串，摘要里就成了「未成功」）。
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.check.outputs.exists }}" = "true" ]; then
+            echo "result=exists" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=published" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
     name: 打 tag 并创建 Release
-    needs: [resolve, publish-ovsx, publish-vsce, publish-npm]
-    # 刻意排在三个市场**之后**（由 needs 保证）。原因是本流程用「v<版本> 的 Release 是否
+    needs: [resolve, publish-ovsx, publish-vsce, publish-npm, publish-pypi]
+    # 刻意排在全部发布通道**之后**（由 needs 保证）。原因是本流程用「v<版本> 的 Release 是否
     # 存在」判断该版本是否已发（见 resolve job）：若先建 Release 再发市场，市场一旦失败，
-    # 重跑时 tag_exists 就成了 true，三个市场会被整体跳过，该版本永远上不了架。
+    # 重跑时 tag_exists 就成了 true，各发布通道会被整体跳过，该版本永远上不了架。
     # 反过来可以自愈：市场发成功 → 建 Release 失败 → 重跑时市场步骤幂等跳过，只补 Release。
     #
     # 这里创建 tag 会触发 push(tag) 事件，但本 workflow 只监听 push(branches: main)，
@@ -633,6 +835,7 @@ jobs:
             echo "| Open VSX | $(ch_status '${{ needs.publish-ovsx.outputs.result }}') |"
             echo "| VS Code Marketplace | $(ch_status '${{ needs.publish-vsce.outputs.result }}') |"
             echo "| npm · \`npx @echo-note/gitea-toolkit-mcp\` | $(ch_status '${{ needs.publish-npm.outputs.result }}') |"
+            echo "| PyPI · \`uvx gitea-toolkit-mcp\` | $(ch_status '${{ needs.publish-pypi.outputs.result }}') |"
           } >> release-notes.md
 
           echo "::notice title=Release 说明已生成::取自 CHANGELOG 的 ${VERSION} 区块，共 $(wc -l < release-notes.md) 行"
@@ -670,6 +873,7 @@ jobs:
           OVSX_RESULT="${{ needs.publish-ovsx.outputs.result }}"
           VSCE_RESULT="${{ needs.publish-vsce.outputs.result }}"
           NPM_RESULT="${{ needs.publish-npm.outputs.result }}"
+          PYPI_RESULT="${{ needs.publish-pypi.outputs.result }}"
           {
             echo "## 发版结果"
             echo
@@ -722,6 +926,20 @@ jobs:
                   echo "**npm**：未发布 ⏭️ —— 凭据未就绪或未配置（详见该 job 的 warning 注解；配置好后重跑即可补齐，发布步骤是幂等的）"
                   ;;
               esac
+              echo
+              case "${PYPI_RESULT}" in
+                published)
+                  echo "**PyPI**：\`gitea-toolkit-mcp\` 已发布 ✅（可 \`uvx gitea-toolkit-mcp\`）"
+                  ;;
+                exists)
+                  echo "**PyPI**：该版本已存在，跳过 ⏭️"
+                  ;;
+                *)
+                  echo "**PyPI**：未发布 ⚠️ —— 可信发布未配置或上传失败，详见该 job 日志"
+                  echo
+                  echo "> 需在 PyPI 添加待发布者：Project \`gitea-toolkit-mcp\`、Owner \`Echo-Note\`、Repository \`gitea-toolkit\`、Workflow \`ci.yml\`、Environment 留空。"
+                  ;;
+              esac
             else
               echo "⏭️ 跳过：\`v${VERSION}\` 已存在（版本号未变更）"
               echo
@@ -732,9 +950,9 @@ jobs:
 
   report-failure:
     name: 构建失败 → 创建 Issue
-    # 必须把三个发布 job 都列进来：任一市场发布失败时，release job 会被跳过
-    # （它 needs 这三个），若这里只写 release，就不会触发失败报告。
-    needs: [verify, package, resolve, publish-ovsx, publish-vsce, publish-npm, release]
+    # 必须把全部发布 job 都列进来：任一市场发布失败时，release job 会被跳过
+    # （它 needs 这几个），若这里只写 release，就不会触发失败报告。
+    needs: [verify, python-test, package, resolve, publish-ovsx, publish-vsce, publish-npm, publish-pypi, release]
     # 只在 main 分支失败时建 issue：
     #   - PR 失败不建，否则每个 bugfix 分支都会刷 issue
     #   - main 失败说明主干已损坏，必须有人知道
@@ -948,7 +1166,7 @@ jobs:
     name: 构建恢复 → 关闭 Issue
     # 与 report-failure 保持一致，否则「市场发布失败但 release 被跳过」时
     # 这条路不会是 success()，也就不会去关闭遗留的失败 issue。
-    needs: [verify, package, resolve, publish-ovsx, publish-vsce, publish-npm, release]
+    needs: [verify, python-test, package, resolve, publish-ovsx, publish-vsce, publish-npm, publish-pypi, release]
     # 形成闭环：修好之后不用人工去关那个失败 issue
     if: ${{ success() && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
