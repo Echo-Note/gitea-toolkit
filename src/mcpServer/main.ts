@@ -3,8 +3,8 @@
  *
  * 两种使用方式：
  *   1. VS Code 扩展内置：由扩展通过 MCP Provider 或配置文件以子进程拉起
- *   2. **独立使用**：作为 npm 包 `gitea-toolkit-mcp` 直接运行，任何 MCP 客户端均可接入
- *      （`npx -y gitea-toolkit-mcp --url ... --token ...`），无需安装扩展
+ *   2. **独立使用**：作为 npm 包 `@echo-note/gitea-toolkit-mcp` 直接运行，任何 MCP 客户端均可接入
+ *      （`npx -y @echo-note/gitea-toolkit-mcp --url ... --token ...`），无需安装扩展
  *
  * 严格约定（破坏任何一条都会让客户端无法解析协议）：
  *   - **stdout 只用于 MCP 协议报文**，任何诊断信息一律写 stderr
@@ -62,14 +62,14 @@ const USAGE = `gitea-toolkit-mcp —— Gitea 仓库 / Issue / PR / 通知 / 工
   -v, --version        显示版本号
 
 示例：
-  npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <你的令牌>
+  npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <你的令牌>
 
 MCP 客户端配置示例（Claude Desktop / Cursor 等）：
   {
     "mcpServers": {
       "gitea": {
         "command": "npx",
-        "args": ["-y", "gitea-toolkit-mcp", "--url", "https://gitea.example.com", "--token", "<令牌>"]
+        "args": ["-y", "@echo-note/gitea-toolkit-mcp", "--url", "https://gitea.example.com", "--token", "<令牌>"]
       }
     }
   }

@@ -47,7 +47,7 @@
   - 认证支持「`NPM_TOKEN`」与「**OIDC 可信发布**（无需任何令牌）」二选一。
     后者需在 npm 包设置里配置 Trusted Publisher 指向本仓库的 `ci.yml`；
     本 job 已声明 `id-token: write`，满足其要求。注意它要求包**已存在**，
-    所以首次发布只能用令牌或本地手动发一次。
+    所以首次发布只能手动做一次 —— **本版本已用本地 `npm publish` 完成**。
   - **本地手动首发的 2FA 交互取决于账号方式**：**安全密钥**下 npm 会**自动**打开浏览器
     完成认证（实测：直接 `npm publish --access public` 即可，终端会打印
     `Authenticate your account at: …`，无需任何参数）；**TOTP 账号**则需带 `--otp=<6 位码>`。
@@ -647,11 +647,11 @@
 
 ### 新增
 
-- **MCP Server 独立为 npm 包 `gitea-toolkit-mcp`**，不再只能作为扩展的一部分使用。
+- **MCP Server 独立为 npm 包 `@echo-note/gitea-toolkit-mcp`**，不再只能作为扩展的一部分使用。
   Claude Desktop、Cursor 等任何支持 stdio 的 MCP 客户端现在可以直接接入，**无需安装 VS Code 扩展**：
 
   ```bash
-  npx -y gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+  npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
   ```
 
   实际上服务端代码早在最初就与 VS Code 完全解耦（`src/core`、`src/ai/tools`、`src/mcpServer`

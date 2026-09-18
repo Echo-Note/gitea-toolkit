@@ -12,49 +12,42 @@ Gitea 的 [MCP](https://modelcontextprotocol.io/) 工具服务（stdio 传输）
 - 读取与标记通知
 - 列出 Actions 工作流与运行记录、读取作业日志、触发 / 重跑工作流
 
-## 安装前提（重要）
+## 安装前提
 
-有两条路，**推荐第一条**。
+**直接用公共 npm registry 即可，无需任何认证**（推荐）：
 
-### ① Release tarball —— 零配置、免认证
+```bash
+npx -y @echo-note/gitea-toolkit-mcp --help
+```
 
-npm/npx 支持直接执行远程 tarball，而 GitHub Release 的附件下载是公开的：
+想锁定版本就带上版本号，例如 `@echo-note/gitea-toolkit-mcp@0.9.0`。
+
+### 备选：Release 里的 tarball
+
+适用于访问不了 npm registry 的环境。npm/npx 支持直接执行远程 tarball，
+而 GitHub Release 的附件下载是公开、免认证的：
 
 ```bash
 npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz --help
 ```
 
-想锁版本就把 `latest` 换成 tag：`.../releases/download/v0.7.0/gitea-toolkit-mcp.tgz`。
+把 `latest` 换成具体 tag 即可锁版本：`.../releases/download/v0.9.0/gitea-toolkit-mcp.tgz`。
 
-### ② GitHub Packages —— 需要先配一次性认证
-
-包也发布在 **GitHub Packages**。但要注意：**它不支持匿名安装** —— 官方文档明确写着
-发布、安装、删除**公开**包同样需要访问令牌（这与它的 Container registry 不同，
-后者的公开镜像可以匿名拉取）。所以要先做认证：
-
-```bash
-# 1. 建一个 classic PAT，勾选 read:packages：https://github.com/settings/tokens
-# 2. 写进 ~/.npmrc
-cat >> ~/.npmrc <<'EOF'
-@echo-note:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=<你的 PAT>
-EOF
-```
-
-> **把它作为项目依赖时请注意**：`package-lock.json` 会**硬编码** registry 地址，
-> 提交后别人 `npm install` 会因缺少令牌而失败。团队协作建议用方式 ①。
+> **0.7.0–0.8.5 期间本包曾发布在 GitHub Packages，0.9.0 起改发公共 npm registry。**
+> 换掉的原因是那个源**匿名装不了** —— 官方文档明确写着发布、安装、删除**公开**包同样需要
+> 访问令牌（与它的 Container registry 不同）；而且 `package-lock.json` 会**硬编码** registry
+> 地址，一旦提交，协作者 `npm install` 就会因为没有令牌而失败。
 
 ## 快速开始
 
 ```bash
-npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz \
-  --url https://gitea.example.com --token <你的访问令牌>
+npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <你的访问令牌>
 ```
 
 不需要令牌就能先看看有什么工具：
 
 ```bash
-npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz --help
+npx -y @echo-note/gitea-toolkit-mcp --help
 ```
 
 访问令牌在 Gitea 的 **「设置 → 应用 → 生成令牌」** 创建，勾选 `repo`、`issue`、`notification` 权限。

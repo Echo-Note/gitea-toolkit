@@ -267,7 +267,25 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit_mcp', { ... });
 MCP Server 已作为**独立包** `@echo-note/gitea-toolkit-mcp` 发布，不依赖 VS Code 扩展，
 任何支持 stdio 的 MCP 客户端均可接入。
 
-**① 零配置方式（推荐）：直接用 Release 里的 tarball。**
+**① 公共 npm registry（推荐，命令最短、无需任何认证）。**
+
+```bash
+npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+```
+
+```json
+{
+  "mcpServers": {
+    "gitea": {
+      "command": "npx",
+      "args": ["-y", "@echo-note/gitea-toolkit-mcp", "--url", "https://gitea.example.com"],
+      "env": { "GITEA_TOKEN": "你的令牌" }
+    }
+  }
+}
+```
+
+**② 备选：Release 里的 tarball**（适用于访问不了 npm registry 的环境）。
 
 npm/npx 支持直接执行远程 tarball，而 GitHub Release 的附件下载**是公开、免认证**的：
 
@@ -276,31 +294,7 @@ npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea
   --url https://gitea.example.com --token <令牌>
 ```
 
-```json
-{
-  "mcpServers": {
-    "gitea": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz",
-        "--url", "https://gitea.example.com"
-      ],
-      "env": { "GITEA_TOKEN": "你的令牌" }
-    }
-  }
-}
-```
-
-想锁定版本就把 `latest` 换成具体 tag，例如 `releases/download/v0.7.0/gitea-toolkit-mcp.tgz`。
-
-**② 直接从 npm 装（推荐，命令最短）。**
-
-包发布在**公共 npm registry**（`@echo-note/gitea-toolkit-mcp`），**无需任何认证**：
-
-```bash
-npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
-```
+想锁定版本就把 `latest` 换成具体 tag，例如 `releases/download/v0.9.0/gitea-toolkit-mcp.tgz`。
 
 > 0.7.0–0.8.5 期间曾发在 GitHub Packages，但那个源**匿名装不了** ——
 > 连公开包也要求先配 PAT 与 `~/.npmrc`；而且 `package-lock.json` 会**硬编码** registry 地址，
@@ -543,7 +537,7 @@ release          三个都成功后才创建 tag 与 Release
 | --- | --- | --- |
 | **`OVSX_PAT`** | open-vsx.org 生成的访问令牌 | Open VSX |
 | **`VSCE_PAT`** | Azure DevOps PAT（Organization 须选 *All accessible organizations*，作用域须含 *Marketplace → Manage*） | VS Code Marketplace |
-| **`NPM_TOKEN`** | **不推荐长期使用** —— npm 在令牌页会直接警告其安全风险（它是对的）。仅作过渡：建一个勾了「绕过 2FA」的 granular token，**只用于首次发布，成功后立即撤销**；正式做法是用下面的 OIDC 可信发布、完全不配此项 | npm（公共 registry） |
+| **`NPM_TOKEN`** | **不要配**（首次发布已完成，包已存在于 npm）。它只是"包还不存在时"的过渡手段，权限也过宽，npm 在令牌页会警告其安全风险（它是对的）；正式做法是用下面的 OIDC 可信发布、完全不配此项 | npm（公共 registry） |
 
 设计上的三点（三个目标一致）：
 
