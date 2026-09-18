@@ -14,12 +14,26 @@ Gitea 的 [MCP](https://modelcontextprotocol.io/) 工具服务（stdio 传输）
 
 ## 安装前提（重要）
 
-本包发布在 **GitHub Packages**，不是 npmjs.org。GitHub 的 npm 源**不接受匿名安装** ——
-官方文档明确写着发布、安装、删除**公开**包同样需要访问令牌。所以 `npx` 之前要先做一次性认证：
+有两条路，**推荐第一条**。
+
+### ① Release tarball —— 零配置、免认证
+
+npm/npx 支持直接执行远程 tarball，而 GitHub Release 的附件下载是公开的：
 
 ```bash
-# 1. 建一个 classic PAT，勾选 read:packages
-#    https://github.com/settings/tokens
+npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz --help
+```
+
+想锁版本就把 `latest` 换成 tag：`.../releases/download/v0.7.0/gitea-toolkit-mcp.tgz`。
+
+### ② GitHub Packages —— 需要先配一次性认证
+
+包也发布在 **GitHub Packages**。但要注意：**它不支持匿名安装** —— 官方文档明确写着
+发布、安装、删除**公开**包同样需要访问令牌（这与它的 Container registry 不同，
+后者的公开镜像可以匿名拉取）。所以要先做认证：
+
+```bash
+# 1. 建一个 classic PAT，勾选 read:packages：https://github.com/settings/tokens
 # 2. 写进 ~/.npmrc
 cat >> ~/.npmrc <<'EOF'
 @echo-note:registry=https://npm.pkg.github.com
@@ -27,20 +41,20 @@ cat >> ~/.npmrc <<'EOF'
 EOF
 ```
 
-> 如果你的客户端不支持 `~/.npmrc`（例如某些沙箱环境），可以直接从
-> [Packages 页面](https://github.com/Echo-Note/gitea-toolkit/pkgs/npm/gitea-toolkit-mcp)
-> 下载 tarball 解压后指定本地入口。
+> **把它作为项目依赖时请注意**：`package-lock.json` 会**硬编码** registry 地址，
+> 提交后别人 `npm install` 会因缺少令牌而失败。团队协作建议用方式 ①。
 
 ## 快速开始
 
 ```bash
-npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <你的访问令牌>
+npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz \
+  --url https://gitea.example.com --token <你的访问令牌>
 ```
 
 不需要令牌就能先看看有什么工具：
 
 ```bash
-npx -y @echo-note/gitea-toolkit-mcp --help
+npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz --help
 ```
 
 访问令牌在 Gitea 的 **「设置 → 应用 → 生成令牌」** 创建，勾选 `repo`、`issue`、`notification` 权限。

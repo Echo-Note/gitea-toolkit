@@ -379,6 +379,32 @@ jobs:
           echo "::notice title=已发布到 GitHub Packages::${NAME}@${VERSION}"
           echo "result=published" >> "$GITHUB_OUTPUT"
 
+      - name: 打包独立 MCP 包为 tarball（供匿名 npx）
+        # 为什么还要这一步：GitHub Packages 的 npm 源**不接受匿名安装**（连公开包也要令牌），
+        # 用户须先建 PAT 并写 ~/.npmrc 才能 `npx @echo-note/gitea-toolkit-mcp`。
+        # 而 GitHub Release 的附件下载**是公开的**，且 npm/npx 支持直接执行远程 tarball
+        # （已实测：`npx <tarball-url>` 可用）。因此把它作为 Release 附件发布，
+        # 给「不想配认证」的人一条零配置通路。
+        #
+        # 附件名**刻意不带版本号**：这样 `releases/latest/download/gitea-toolkit-mcp.tgz`
+        # 是稳定地址，而 `releases/download/v<版本>/gitea-toolkit-mcp.tgz` 又能精确锁版本
+        # —— 版本信息由 tag 承载，不必写进文件名。
+        if: steps.resolve.outputs.tag_exists == 'false'
+        run: |
+          set -euo pipefail
+          # npm pack 是本地操作，不需要认证；package.json / README 来自 checkout，
+          # dist/index.js 来自 package job 上传的 artifact
+          test -f "packages/mcp-server/dist/index.js" || {
+            echo "::error::缺少 packages/mcp-server/dist/index.js，无法打包 tarball"
+            exit 1
+          }
+          # 用 npm pack 输出的文件名而不是通配符：包名含 scope 时产物名是
+          # `echo-note-gitea-toolkit-mcp-<版本>.tgz`，通配符在无匹配时会让 mv 失败
+          TARBALL="$(cd packages/mcp-server && npm pack --silent | tail -1)"
+          mv "packages/mcp-server/${TARBALL}" ./gitea-toolkit-mcp.tgz
+          ls -lh gitea-toolkit-mcp.tgz
+          echo "::notice title=已生成 MCP tarball::匿名安装可用 npx -y <Release 附件地址>"
+
       - name: 创建 Release（同时依据打包版本打 tag）
         id: publish
         if: steps.resolve.outputs.tag_exists == 'false'
@@ -393,7 +419,7 @@ jobs:
             exit 1
           }
           # --target 让 tag 精确指向本次实际构建的提交，避免落到别的提交上
-          gh release create "v${VERSION}" "gitea-toolkit-${VERSION}.vsix" SHA256SUMS \
+          gh release create "v${VERSION}" "gitea-toolkit-${VERSION}.vsix" SHA256SUMS gitea-toolkit-mcp.tgz \
             --target "${GITHUB_SHA}" \
             --title "v${VERSION}" \
             --generate-notes
@@ -413,7 +439,7 @@ jobs:
             if [ "${TAG_EXISTS}" = "false" ]; then
               echo "✅ 已创建 tag \`v${VERSION}\` 并发布 Release"
               echo
-              echo "附件：\`gitea-toolkit-${VERSION}.vsix\`、\`SHA256SUMS\`"
+              echo "附件：\`gitea-toolkit-${VERSION}.vsix\`、\`SHA256SUMS\`、\`gitea-toolkit-mcp.tgz\`"
               echo
               echo "Release：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}"
               echo

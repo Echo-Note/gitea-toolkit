@@ -261,26 +261,13 @@ vscode.lm.registerMcpServerDefinitionProvider('giteaToolkit_mcp', { ... });
 MCP Server 已作为**独立包** `@echo-note/gitea-toolkit-mcp` 发布，不依赖 VS Code 扩展，
 任何支持 stdio 的 MCP 客户端均可接入。
 
-**① 它发布在 GitHub Packages，不是 npmjs.org —— 必须先配认证。**
+**① 零配置方式（推荐）：直接用 Release 里的 tarball。**
 
-GitHub Packages 的 npm 源**不接受匿名安装**（官方原文：*publish, install, and delete
-private, internal, and **public** packages* 都需要访问令牌），因此 `npx` 无法开箱即用。
-先做一次性配置：
+npm/npx 支持直接执行远程 tarball，而 GitHub Release 的附件下载**是公开、免认证**的：
 
 ```bash
-# 1. 建一个 classic PAT，勾选 read:packages
-#    https://github.com/settings/tokens
-# 2. 写入 ~/.npmrc
-cat >> ~/.npmrc <<'EOF'
-@echo-note:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=<你的 PAT>
-EOF
-```
-
-**② 然后再接入：**
-
-```bash
-npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz \
+  --url https://gitea.example.com --token <令牌>
 ```
 
 ```json
@@ -288,17 +275,46 @@ npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令
   "mcpServers": {
     "gitea": {
       "command": "npx",
-      "args": ["-y", "@echo-note/gitea-toolkit-mcp", "--url", "https://gitea.example.com"],
+      "args": [
+        "-y",
+        "https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz",
+        "--url", "https://gitea.example.com"
+      ],
       "env": { "GITEA_TOKEN": "你的令牌" }
     }
   }
 }
 ```
 
-`npx -y @echo-note/gitea-toolkit-mcp --help` 可查看全部参数（`--no-verify-tls`、`--timeout`、
-`--max-output`），命令行参数优先于环境变量。包目录里的 README 有 Claude Desktop / Cursor 的完整示例。
+想锁定版本就把 `latest` 换成具体 tag，例如 `releases/download/v0.7.0/gitea-toolkit-mcp.tgz`。
 
-> **如果嫌麻烦**：改用「装扩展」的方案就完全不需要这些 —— 扩展本身已经把 MCP Server 一并装好了，
+**② 或者从 GitHub Packages 装（一次性配置后命令更短）。**
+
+包也发布在 GitHub Packages（`@echo-note/gitea-toolkit-mcp`）。但要注意：**GitHub Packages 的
+npm 源不支持匿名安装** —— 官方文档明确写着发布、安装、删除**公开**包同样需要访问令牌
+（这与它的 Container registry 不同，后者公开镜像可匿名拉取）。所以要先做一次性认证：
+
+```bash
+# 1. 建一个 classic PAT，勾选 read:packages：https://github.com/settings/tokens
+# 2. 写入 ~/.npmrc
+cat >> ~/.npmrc <<'EOF'
+@echo-note:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=<你的 PAT>
+EOF
+```
+
+```bash
+npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+```
+
+> 如果你需要把这个包作为**依赖**放进项目：注意 `package-lock.json` 会**硬编码** registry 地址，
+> 一旦提交，别人 `npm install` 会因为没有令牌而失败。这是 GitHub Packages 的已知坑，
+> 团队协作场景建议优先考虑方式 ① 或改用 npmjs.org。
+
+`--help` 可查看全部参数（`--no-verify-tls`、`--timeout`、`--max-output`），命令行参数优先于环境变量。
+包目录里的 README 有 Claude Desktop / Cursor 的完整示例。
+
+> **如果连 npx 都不想用**：改用「装扩展」的方案 —— 扩展本身已经把 MCP Server 装好了，
 > 配置命令是 `Gitea: 写入 CodeBuddy MCP 配置` 或 `Gitea: 复制 MCP 配置到剪贴板`。
 > 独立包的价值仅在于**完全不想装 VS Code 系编辑器**的场景。
 

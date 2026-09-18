@@ -2,6 +2,35 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.8.0] - 2026-09-18
+
+### 新增
+
+- **新增一条完全匿名的独立包安装路径**：把 MCP 包打成 tarball 作为 GitHub Release 附件发布。
+
+  ```bash
+  npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea-toolkit-mcp.tgz --help
+  ```
+
+  背景：0.7.0 把包改发 GitHub Packages 后，用户必须先建 PAT 并写 `~/.npmrc` 才能 `npx`，
+  否则会 401。Release 附件下载**是公开免认证的**，而 npm/npx 支持直接执行远程 tarball
+  （`npm install <url>` 与 `npx <url>` 均已实测可用），因此补上这条零配置通路。
+
+  附件名**刻意不带版本号**：`releases/latest/download/gitea-toolkit-mcp.tgz` 是稳定地址，
+  而 `releases/download/v<版本>/gitea-toolkit-mcp.tgz` 又能精确锁版本 —— 版本信息由 tag 承载。
+
+  GitHub Packages 那条通路**保留不变**（一次性配置后命令更短，适合长期使用）。
+
+### 说明
+
+- 关于「GitHub Packages 不能匿名安装」的完整核实与证据，见 0.7.0 的说明与 README。
+  一句话：这不是配置问题，而是 GitHub 对 npm registry 的既定行为 ——
+  文档明确要求公开包也要令牌，且**与它自家的 Container registry 相反**（后者公开镜像可匿名拉取）。
+  该差异在 GitHub 社区被反复质疑多年（Discussion #33875，2022 起），官方至今无回应、无修复计划。
+- 顺带补上一条使用提醒：把该包作为**项目依赖**时，`package-lock.json` 会硬编码 registry 地址，
+  提交后他人 `npm install` 会因缺少令牌失败。团队协作场景建议用 Release tarball 那条路。
+
+
 ## [0.7.0] - 2026-09-18
 
 ### 新增
