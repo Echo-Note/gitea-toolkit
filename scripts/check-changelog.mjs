@@ -99,10 +99,62 @@ if (!latestHeading) {
   );
 }
 
+// 3. 三个发布物必须共用同一版本号
+//
+// 为什么单列一条：`scripts/bump-version.mjs` 一度只同步 package.json 与 npm 包，
+// **漏了 python/pyproject.toml** —— 它的注释却写着「已同步」。结果是 PyPI 包会悄悄停在
+// 旧版本号上，而发布时**没人会报错**（没有任何机制比对这三者）。
+// 版本号分叉的直接后果：没人说得清哪个 PyPI 版本对应哪次构建。
+const manifests = [
+  ['packages/mcp-server/package.json', readJsonVersion(path.join(projectRoot, 'packages/mcp-server/package.json'))],
+  ['python/pyproject.toml', readPyprojectVersion(path.join(projectRoot, 'python/pyproject.toml'))],
+];
+for (const [file, version] of manifests) {
+  if (version === undefined) {
+    report(file, null, '找不到 version 字段（无法校验它与 package.json 是否一致）。');
+  } else if (version !== packageJson.version) {
+    report(
+      file,
+      null,
+      `版本号是 ${version}，与 package.json 的 ${packageJson.version} 不一致。` +
+        '三个发布物（VS Code 扩展 / npm 包 / PyPI 包）**必须同版本**：它们由同一次构建产出，' +
+        '版本号一旦分叉就没人说得清哪个包对应哪次构建。跑 `npm run version:patch` 会一起改。',
+    );
+  }
+}
+
 if (problems.length > 0) {
   console.error(`[check-changelog] 发现 ${problems.length} 个问题：`);
   for (const problem of problems) console.error(`  - ${problem}`);
   process.exit(1);
 }
 
-console.log(`[check-changelog] 校验通过（最新版本 ${latestHeading.version}，无未填占位）`);
+console.log(
+  `[check-changelog] 校验通过（最新版本 ${latestHeading.version}，无未填占位，三个发布物版本一致）`,
+);
+
+/**
+ * 读取 JSON 文件的 version 字段。
+ * @param {string} file 文件路径
+ * @returns {string | undefined} 版本号；读不到返回 undefined
+ */
+function readJsonVersion(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8')).version;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 读取 pyproject.toml 的 version 字段（只认顶层 `version = "x.y.z"`）。
+ * @param {string} file 文件路径
+ * @returns {string | undefined} 版本号；读不到返回 undefined
+ */
+function readPyprojectVersion(file) {
+  try {
+    return /^version\s*=\s*"([^"]+)"/m.exec(fs.readFileSync(file, 'utf8'))?.[1];
+  } catch {
+    return undefined;
+  }
+}

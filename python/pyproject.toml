@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "gitea-toolkit-mcp"
 # 版本由 scripts/bump-version.mjs 与根 package.json / MCP npm 包同步
-version = "0.9.1"
+version = "0.9.2"
 description = "Gitea 的 MCP 工具服务（stdio）：仓库 / Issue / Pull Request / 通知 / Gitea Actions 的读写。与 gitea-toolkit 扩展同源，任何 MCP 客户端均可接入。"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -25,6 +25,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const packageJsonPath = path.join(projectRoot, 'package.json');
 const changelogPath = path.join(projectRoot, 'CHANGELOG.md');
 const mcpPackageJsonPath = path.join(projectRoot, 'packages', 'mcp-server', 'package.json');
+const pyprojectPath = path.join(projectRoot, 'python', 'pyproject.toml');
 
 /** 支持的递增类型。 */
 const PARTS = ['major', 'minor', 'patch'];
@@ -161,6 +162,32 @@ function syncMcpPackageVersion(version) {
   return true;
 }
 
+/**
+ * 同步 Python 包（python/pyproject.toml）的版本号。
+ *
+ * ⚠️ 这一步一度是**漏的** —— `python/pyproject.toml` 里写着「版本由本脚本同步」，
+ * 而脚本其实只改了 package.json 与 npm 包。后果是 PyPI 包会悄悄停在旧版本号上，
+ * 且**发布时没有任何机制会报错**。现在 `npm run check:changelog` 会比对三个发布物的
+ * 版本号，漏改也会被拦下。
+ * @param {string} version 新版本号
+ * @returns {boolean} 是否发生了修改
+ */
+function syncPythonPackageVersion(version) {
+  if (!fs.existsSync(pyprojectPath)) {
+    console.log('[bump-version] 未找到 python/pyproject.toml，跳过同步');
+    return false;
+  }
+  const source = fs.readFileSync(pyprojectPath, 'utf8');
+  // 只替换第一处（`[project]` 的 version）—— pyproject 里其它小节不会有 version
+  const updated = source.replace(/^version\s*=\s*"[^"]+"/m, `version = "${version}"`);
+  if (updated === source) {
+    return false;
+  }
+  fs.writeFileSync(pyprojectPath, updated, 'utf8');
+  console.log(`[bump-version] 已同步 python/pyproject.toml → ${version}`);
+  return true;
+}
+
 function main() {
   if (process.env.SKIP_VERSION_BUMP === '1') {
     console.log('[bump-version] 检测到 SKIP_VERSION_BUMP=1，跳过版本递增');
@@ -197,6 +224,7 @@ function main() {
   pkg.version = target;
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
   syncMcpPackageVersion(target);
+  syncPythonPackageVersion(target);
 
   if (changelog) {
     insertChangelogEntry(target);
