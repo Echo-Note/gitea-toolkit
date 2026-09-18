@@ -580,8 +580,16 @@ release          三个都成功后才创建 tag 与 Release
 > read + write（包尚不存在时无法选单个包，只能按 scope 授权）、有效期选最短、
 > **发布成功后立刻撤销**，正式通道仍应迁到 OIDC。
 >
-> **凭据类错误不再阻断发版**：npm 的 401/403/2FA 类失败会降级为「提示 + 跳过」，
-> 不会连累 GitHub Release（本项目踩过：市场已发布、Release 却因 npm 卡住而建不出来）。
+> **任一发布渠道失败 = 整体失败**（别改回"降级跳过"）：发布 job 一失败，`release` 就会跳过、
+> 不建 tag 与 Release，CI 也按失败上报。这是刻意的 —— 实测过"降级为跳过"的坏处：job 显示
+> success 却根本没发布，反而分不清成败。失败即失败还有个好处：Release 没建出 ⇒ 该版本仍未
+> "发过" ⇒ 下次推送会自动重试，天然自愈。
+>
+> ⚠️ 另有一条**硬性前置条件**：**可信发布（OIDC）需要 npm CLI ≥ 11.5.1**
+> （官方原文：*Trusted publishing requires npm CLI version 11.5.1 or later and Node version
+> 22.14.0 or higher*）。而 `node-version: '22'` 自带的是 **npm 10.x** —— npm 10 **根本不尝试
+> OIDC**，会发出无身份请求，npm 按"查无此包"返回 **404**，与"没配可信发布"的报错一模一样。
+> 本项目就在这上面栽了很久，所以工作流在发布前会 `npm install -g npm@latest`。
 >
 > **Release 说明直接取自 CHANGELOG**（不再用 `gh release create --generate-notes` 的自动摘要）：
 > 后者按 commit / PR 罗列，与 CHANGELOG 里那份有分类、有原因、有实测数据的说明完全是两回事。

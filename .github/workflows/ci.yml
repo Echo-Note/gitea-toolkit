@@ -379,10 +379,6 @@ jobs:
       id-token: write
     outputs:
       result: ${{ steps.publish.outputs.result }}
-      # 供 report-publish-status 判断是否要建「降级」issue。
-      # ⚠️ 漏声明的话下游读到的会是**静默的空字符串**（不报错），功能等于没写。
-      degraded: ${{ steps.publish.outputs.degraded }}
-      reason: ${{ steps.publish.outputs.reason }}
     steps:
       - name: 检出代码
         uses: actions/checkout@v7
@@ -501,41 +497,22 @@ jobs:
             exit 0
           fi
 
-          # **配置/凭据类失败不阻断发版**：那是仓库配置问题，不是代码问题。
-          # 这条规则是踩出来的 —— 首次发布连撞两次：先因令牌缺「绕过 2FA」得到 403，
-          # 后因**包在 npm 上尚不存在**得到 404。两次两个扩展市场都已发布成功，
-          # 却因为 release job needs 本 job 而一直建不出 GitHub Release，整条流水线卡住。
-          # 现在降级为「醒目提示 + 跳过」，配置好后重跑即可补齐（发布步骤是幂等的）。
-          if grep -qiE "ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication|E404|Not found|is not in this registry" "${LOG}"; then
-            HIT="$(grep -m1 -iE 'ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication|E404|Not found|is not in this registry' "${LOG}" | cut -c1-200)"
-            if grep -qiE "E404|Not found|is not in this registry" "${LOG}"; then
-              # ⚠️ 404 有两种完全不同的含义，必须区分，否则提示会把人带偏（实测踩过）：
-              #   a) 包**真的不存在** → 可信发布要求包已存在，得先手动发一次
-              #   b) 包**已存在，但 npm 不认这次发布的身份** → 未配置 Trusted Publisher 时，
-              #      npm 会返回 404 而**不是** 403（它刻意不暴露"你无权访问"）
-              # 判据：直接查一次包元数据即可区分。
-              if npm view "${NAME}" version >/dev/null 2>&1; then
-                REASON="unauthorized"
-                echo "::warning title=npm 未授权发布 → 跳过 npm 发布::${NAME} 在 npm 上已存在，所以这个 404 不是「包不存在」，而是**npm 不认本次发布的身份** —— 通常就是没有配置 Trusted Publisher（或配的仓库 / 工作流文件名对不上）。请到 npm 包设置 → Trusted publishing 添加 GitHub Actions：仓库 Echo-Note/gitea-toolkit、工作流文件名 ci.yml，并**勾选允许 npm publish**（2026-09-03 之后创建的配置默认只允许 stage publish）。原始错误：${HIT}"
-              else
-                REASON="package-missing"
-                echo "::warning title=npm 包尚不存在 → 跳过 npm 发布::${NAME} 在 npm 上还没创建过。可信发布要求包已存在，所以**首次发布必须手动做一次**：cd packages/mcp-server && npm publish --access public。2FA 交互取决于账号方式：**安全密钥会自动弹浏览器认证**（实测无需任何额外参数）；**TOTP 账号**则加 --otp=<6 位码>。原始错误：${HIT}"
-              fi
+          # **任何发布失败都必须让流水线失败。**
+          # 用户明确要求：任一渠道失败即整体失败。之前「配置类失败降级为跳过」的设计会让这个 job
+          # 显示 success 却根本没发布 —— 反而分不清成败（本项目的真实教训，已彻底移除该机制）。
+          # 失败即失败还带来一个好处：Release 不会被创建 → 版本仍然"未发过" → 下次推送自动重试。
+          DETECTED="$(grep -m1 -iE 'ENEEDAUTH|EOTP|E404|E403|Not found|Two-factor|one-time password' "${LOG}" | cut -c1-200)"
+          echo "::error title=npm 发布失败::${DETECTED:-详见上方 npm 输出}"
+          # 下面只是给出可操作的原因判断，不影响「失败」这个结论
+          if grep -qiE "E404|Not found|is not in this registry" "${LOG}"; then
+            if npm view "${NAME}" version >/dev/null 2>&1; then
+              echo "::error::包在 npm 上已存在，所以这是「身份不被认可」的 404 —— 检查 npm 包设置 → Trusted publishing（仓库 Echo-Note/gitea-toolkit、工作流文件名 ci.yml、**必须勾选允许 npm publish**），以及 runner 的 npm CLI 是否 ≥ 11.5.1（本步骤已在发布前自动升级）。"
             else
-              REASON="auth"
-              echo "::warning title=npm 凭据未就绪 → 跳过 npm 发布::${HIT}"
+              echo "::error::包在 npm 上还不存在 —— 可信发布要求包已存在，需先手动发布一次（cd packages/mcp-server && npm publish --access public）。"
             fi
-            echo "result=skipped" >> "$GITHUB_OUTPUT"
-            # **标记为「降级」**：本通道本该能发布、却没发成功。它不阻断 Release（见文件头注释），
-            # 但必须持续可见 —— 否则凭据过期后会一直静默降级，谁都不知道 npm 上其实没更新
-            # （用户提出的正是这一点）。degraded=true 会被 report-publish-status 用来建 issue。
-            # 「从未配置」不走这里：那是有意跳过，不该报警。
-            echo "degraded=true" >> "$GITHUB_OUTPUT"
-            echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
-            exit 0
+          elif grep -qiE "EOTP|Two-factor|one-time password" "${LOG}"; then
+            echo "::error::npm 要求一次性密码 —— CI 无法提供。确认没有传 NODE_AUTH_TOKEN（它会压制 OIDC），并已配置 Trusted Publisher。"
           fi
-
-          echo "::error title=npm 发布失败::非凭据类错误，详见上方 npm 输出。"
           exit 1
 
   release:
@@ -641,9 +618,7 @@ jobs:
             case "${1}" in
               published) echo '已发布 ✅' ;;
               exists)    echo '已存在（幂等跳过）⏭️' ;;
-              skipped)
-                if [ "${2:-}" = "true" ]; then echo '**未发布 —— 需要关注 ⚠️**'; else echo '未启用（未配置 secret）⏭️'; fi
-                ;;
+              skipped) echo '未启用（未配置 secret）⏭️' ;;
               *)         echo '未成功 ⚠️' ;;
             esac
           }
@@ -657,7 +632,7 @@ jobs:
             echo '| --- | --- |'
             echo "| Open VSX | $(ch_status '${{ needs.publish-ovsx.outputs.result }}') |"
             echo "| VS Code Marketplace | $(ch_status '${{ needs.publish-vsce.outputs.result }}') |"
-            echo "| npm · \`npx @echo-note/gitea-toolkit-mcp\` | $(ch_status '${{ needs.publish-npm.outputs.result }}' '${{ needs.publish-npm.outputs.degraded }}') |"
+            echo "| npm · \`npx @echo-note/gitea-toolkit-mcp\` | $(ch_status '${{ needs.publish-npm.outputs.result }}') |"
           } >> release-notes.md
 
           echo "::notice title=Release 说明已生成::取自 CHANGELOG 的 ${VERSION} 区块，共 $(wc -l < release-notes.md) 行"
@@ -754,173 +729,6 @@ jobs:
               echo "需要发版请先 \`npm run version:patch\`（或 minor/major）提交后再推送。"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-  report-publish-status:
-    name: 发布通道降级 → 建/关 Issue
-    needs: [resolve, publish-ovsx, publish-vsce, publish-npm, release]
-    # 用户提出的问题：**「发布失败默认为通过，那凭据过期了怎么办？就一直静默失败吗？」**
-    # 这正是「降级为跳过」这个设计的代价，所以补上这条闭环：
-    #   - 不阻断 Release（扩展用户的体验优先，市场已经发了就要让 tag/Release 建出来）
-    #   - 但**绝不静默** —— 降级时认领/创建一个持续存在的 issue，修好后自动关闭。
-    # 用 always()：某个通道失败时也要能留下痕迹/或在恢复时关掉旧 issue。
-    # 不带 tagExists 门控：npm 步骤现在**每次推送都会跑**，所以降级状态随时可能变化 ——
-    # 让本 job 持续维护该 issue（通道一恢复就自动关闭）。否则 0.9.1 这种
-    # 「Release 已建、npm 却没发」的情况会一直没人提醒。
-    if: ${{ always() && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: 检查各发布通道结果
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const LABEL = 'publish-degraded';
-            const MARKER = '<!-- publish-degraded -->';
-            const { owner, repo } = context.repo;
-            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
-            const version = '${{ needs.resolve.outputs.version }}';
-
-            // 只有 npm 会置 degraded=true，且只在两种「本该能发却没发成功」的情况：
-            //   package-missing：包在 npm 上还没创建过（首次发布未完成）
-            //   auth：令牌失效/过期，或账号开了 2FA 但令牌没勾「绕过 2FA」
-            // ovsx / vsce 不需要这个标记：它们未配置时只是 skipped（有意跳过，不该报警），
-            // 真正失败时 job 直接失败 —— 那条路已由 report-failure 负责。
-            const npmResult = '${{ needs.publish-npm.outputs.result }}';
-            const npmDegraded = '${{ needs.publish-npm.outputs.degraded }}' === 'true';
-            const npmReason = '${{ needs.publish-npm.outputs.reason }}';
-            const releaseResult = '${{ needs.release.result }}';
-
-            const status = {
-              'Open VSX': '${{ needs.publish-ovsx.outputs.result }}',
-              'VS Code Marketplace': '${{ needs.publish-vsce.outputs.result }}',
-              'npm': npmResult,
-            };
-
-            if (!npmDegraded) {
-              // 没降级 → 顺手关掉遗留的降级 issue（这条闭环的另一半）
-              const stale = await github.paginate(github.rest.issues.listForRepo, {
-                owner, repo, state: 'open', labels: LABEL, per_page: 100,
-              });
-              for (const issue of stale) {
-                await github.rest.issues.createComment({
-                  owner, repo, issue_number: issue.number,
-                  body: [
-                    '✅ 发布通道已恢复正常，自动关闭本 issue。',
-                    '',
-                    `- 恢复运行：[#${context.runNumber}](${runUrl})`,
-                    `- 版本：\`${version}\`｜npm：\`${npmResult}\`｜Release：\`${releaseResult}\``,
-                  ].join('\n'),
-                });
-                await github.rest.issues.update({ owner, repo, issue_number: issue.number, state: 'closed' });
-                core.info(`已关闭降级 issue #${issue.number}`);
-              }
-              return;
-            }
-
-            // 降级 → 确保 label 存在（给不存在的 label 建 issue 会直接报错）
-            try {
-              await github.rest.issues.getLabel({ owner, repo, name: LABEL });
-            } catch (error) {
-              if (error.status === 404) {
-                await github.rest.issues.createLabel({
-                  owner, repo, name: LABEL, color: 'fbca04',
-                  description: '发布通道降级：某个通道本该能发却没发成功（恢复后自动关闭）',
-                });
-              } else { throw error; }
-            }
-
-            const hint = npmReason === 'unauthorized'
-              ? [
-                  '**包已存在，但 npm 不认这次发布的身份。** 未配置 Trusted Publisher 时，npm 返回的是',
-                  '404 而不是 403（它刻意不暴露「你无权访问」）—— 所以看到 404 **不代表包不存在**。',
-                  '',
-                  '> 另一个同样表现为 404 的原因：**runner 的 npm CLI 低于 11.5.1**。npm 10（Node 22 自带）
-                  > **根本不尝试 OIDC**，于是发出无身份请求 → 404。工作流已在发布前自动 `npm install -g npm@latest`。',
-                  '',
-                  '去 **npm 包设置 → Trusted publishing → GitHub Actions** 添加：',
-                  '',
-                  '| 字段 | 填什么 |',
-                  '| --- | --- |',
-                  '| 组织或用户 | `Echo-Note` |',
-                  '| 仓库 | `gitea-toolkit` |',
-                  '| 工作流文件名 | `ci.yml`（**必须与实际文件名完全一致**）|',
-                  '| 环境名称 | 留空 |',
-                  '| 允许的操作 | **勾上允许 `npm publish`**（2026-09-03 之后创建的配置默认只给 `npm stage publish`）|',
-                  '',
-                  '配好后**不需要再升版本**：重跑一次流水线，npm 步骤会自动补发当前版本。',
-                ].join('\n')
-              : npmReason === 'package-missing'
-              ? [
-                  '**包在 npm 上还没创建过** —— 可信发布（OIDC）要求包已存在，所以首次必须手动发一次：',
-                  '',
-                  '```bash',
-                  'cd packages/mcp-server',
-                  'npm login                      # 若未登录',
-                  'npm publish --access public    # 安全密钥会自动弹浏览器认证；TOTP 账号加 --otp=<6 位码>',
-                  '```',
-                  '',
-                  '发布成功后本通道会自动跳过（幂等）。之后即可配置 Trusted Publisher。',
-                ].join('\n')
-              : [
-                  '**npm 凭据未被接受**。实测见过两种错误原文：',
-                  '',
-                  '- `E403 … Two-factor authentication or granular access token with bypass 2fa enabled`',
-                  '  —— 令牌没勾「绕过 2FA」',
-                  '- `EOTP … requires a one-time password from your authenticator`',
-                  '  —— 令牌**有效但未获 2FA 豁免**，而 CI 里没人能输 OTP',
-                  '',
-                  'CI 已改为**只走 OIDC 可信发布**（不再使用 `NPM_TOKEN`），所以先确认 npm 侧配置：',
-                  'npm 包设置 → *Trusted publishing* → GitHub Actions，仓库 `Echo-Note/gitea-toolkit`、',
-                  '工作流文件名 `ci.yml`，并**勾选允许 `npm publish`**。',
-                  '',
-                  '> 配好之后**不需要再升版本**：重跑一次流水线，npm 步骤会自动把当前版本补发上去。',
-                ].join('\n');
-
-            const body = [
-              '## 发布通道降级',
-              '',
-              `\`v${version}\` 的 **npm 通道没有发布成功**，已按设计降级（不阻断 Release）。`,
-              '',
-              '| 通道 | 本次结果 |',
-              '| --- | --- |',
-              ...Object.entries(status).map(([name, result]) => `| ${name} | ${result || '（无输出）'} |`),
-              '',
-              `Release 状态：\`${releaseResult}\`${releaseResult === 'success' ? '（已建出，扩展用户不受影响）' : ''}`,
-              '',
-              '### 怎么修',
-              '',
-              hint,
-              '',
-              '### 为什么它没有让 CI 失败',
-              '',
-              '两个扩展市场已经发布成功时，不该因为 npm 的配置问题连 GitHub Release 都建不出来。',
-              '但**降级不能等于静默**，所以由本 issue 持续跟踪；通道恢复后自动关闭。',
-              '',
-              `运行：[#${context.runNumber}](${runUrl})`,
-              '',
-              MARKER,
-            ].join('\n');
-
-            const open = await github.paginate(github.rest.issues.listForRepo, {
-              owner, repo, state: 'open', labels: LABEL, per_page: 100,
-            });
-            const target = open.find((issue) => (issue.body || '').includes(MARKER)) || open[0];
-
-            if (target) {
-              await github.rest.issues.update({ owner, repo, issue_number: target.number, body });
-              await github.rest.issues.createComment({
-                owner, repo, issue_number: target.number,
-                body: `### 仍然降级\n\n- 运行：[#${context.runNumber}](${runUrl})\n- 版本：\`${version}\`｜原因：\`${npmReason}\``,
-              });
-              core.info(`已更新降级 issue #${target.number}`);
-            } else {
-              const created = await github.rest.issues.create({
-                owner, repo, title: '[发布] npm 通道未发布成功', body, labels: [LABEL],
-              });
-              core.info(`已创建降级 issue #${created.data.number}`);
-            }
 
   report-failure:
     name: 构建失败 → 创建 Issue
