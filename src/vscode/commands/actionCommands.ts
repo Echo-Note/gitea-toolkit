@@ -27,20 +27,40 @@ function num(payload: Record<string, unknown>, key: string): number {
   return typeof value === 'number' ? value : 0;
 }
 
+/** 作业日志的输出通道（懒创建，整个会话复用同一个）。 */
+let jobLogChannel: vscode.OutputChannel | undefined;
+
 /**
- * 创建 Actions 命令。
+ * 取得作业日志的输出通道。
+ * @param context 扩展上下文（用于登记销毁）
+ * @returns 输出通道
+ */
+function getJobLogChannel(context: vscode.ExtensionContext): vscode.OutputChannel {
+  if (!jobLogChannel) {
+    jobLogChannel = vscode.window.createOutputChannel('Gitea 工作流日志');
+    context.subscriptions.push(jobLogChannel);
+  }
+  return jobLogChannel;
+}
+
+/**
+ * 创建工作流相关命令。
  * @param deps 命令依赖
  * @returns 命令映射
  */
 export function createActionCommands(deps: CommandDeps): CommandMap {
-  const { service, providers } = deps;
+  const { service, providers, context } = deps;
 
   return {
     /**
-     * 在编辑器里查看作业日志。
+     * 在**输出面板**里查看作业日志。
      *
-     * 之所以不用 OutputChannel：日志需要能搜索、能复制、能并排对比，
-     * 以「未保存的只读文档」呈现最自然（也便于用户另存）。
+     * 为什么不用编辑器文档：原先用 `openTextDocument({content})`，会生成一个**未保存的
+     * 临时文档** —— 标题是 `Untitled-1`、关闭时还要问要不要保存，既占编辑器标签，
+     * 也和「Issue / PR 走详情面板」的体验不一致，用户明确反馈过这一点。
+     *
+     * 日志本来就是「输出」类内容，放进输出面板更自然：不占编辑器、不会被误改、
+     * 随时用同一条命令就能切回来。
      */
     'gitea.showJobLogs': async (node) => {
       const payload = payloadOf(node);
@@ -57,11 +77,18 @@ export function createActionCommands(deps: CommandDeps): CommandMap {
         { location: vscode.ProgressLocation.Notification, title: `正在获取「${name}」的日志…` },
         () => operations.actions.getJobLogs(owner, repo, jobId),
       );
-      const content =
-        logs.trim().length > 0 ? logs : '（该作业没有日志：可能仍在排队，或日志已被清理。）';
-      // 未保存文档：不落盘、不需要工作区，纯查看用途
-      const document = await vscode.workspace.openTextDocument({ content, language: 'plaintext' });
-      await vscode.window.showTextDocument(document, { preview: false });
+      const channel = getJobLogChannel(context);
+      // 每次清空：既避免长时间使用后无限增长，也保证重复点击同一个作业时看到的是它自己
+      channel.clear();
+      channel.appendLine(`# ${owner}/${repo} · ${name}（job ${jobId}）`);
+      channel.appendLine('');
+      channel.appendLine(
+        logs.trim().length > 0
+          ? logs
+          : '（该作业没有日志。常见原因：运行被取消、作业尚未开始执行，或日志已被清理。）',
+      );
+      // 保留焦点在侧边栏：用户常要连着翻好几个作业
+      channel.show(true);
     },
 
     /** 重跑一次运行：整条或仅失败的作业。 */
@@ -97,7 +124,7 @@ export function createActionCommands(deps: CommandDeps): CommandMap {
         // 稍后刷新，给服务端一点时间把新状态写出来
         setTimeout(() => providers.repos.refresh(), 1500);
       } catch (error) {
-        logError('重跑 Actions 失败', error);
+        logError('重跑工作流失败', error);
         void vscode.window.showErrorMessage(`重跑失败：${describeError(error)}`);
       }
     },
@@ -131,7 +158,7 @@ export function createActionCommands(deps: CommandDeps): CommandMap {
         );
         setTimeout(() => providers.repos.refresh(), 3000);
       } catch (error) {
-        logError('触发 Actions 工作流失败', error);
+        logError('触发工作流失败', error);
         void vscode.window.showErrorMessage(
           `触发失败：${describeError(error)}\n\n只有声明了 \`on: workflow_dispatch\` 的工作流才能被手动触发。`,
         );

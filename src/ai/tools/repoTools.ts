@@ -248,7 +248,7 @@ export const repoTools: GiteaToolDefinition[] = [
     name: 'gitea_get_commit_status',
     displayName: '查询提交状态',
     description:
-      '查询某个分支 / 标签 / 提交的 CI 合并状态（Gitea Actions 等）。返回 overall 状态与每个检查项的明细，可用于判断 PR 是否通过检查。',
+      '查询某个分支 / 标签 / 提交的 CI 合并状态（Gitea 工作流等）。返回 overall 状态与每个检查项的明细，可用于判断 PR 是否通过检查。',
     userDescription: '查询提交 CI 状态',
     category: 'repository',
     access: 'read',

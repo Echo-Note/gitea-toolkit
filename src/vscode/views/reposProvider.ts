@@ -1,5 +1,5 @@
 /**
- * 「仓库」视图：组织分组 → 仓库 → 分支 / 打开的 Issue / 打开的 Pull Request / Actions。
+ * 「仓库」视图：组织分组 → 仓库 → 分支 / 打开的 Issue / 打开的 Pull Request / 工作流。
  *
  * 三种形态：
  *   - **浏览**（默认）：按 owner 分组；含当前工作区仓库的那组置顶并自动展开
@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import type { GiteaRepository } from '../../core/types';
 import { branchWebUrl, runWebUrl, workflowWebUrl } from '../../core/urls';
 import { readSettings } from '../config';
+import { logWarn } from '../logger';
 import type { GiteaService } from '../service';
 import { BaseTreeProvider } from './baseProvider';
 import { actionIcons, groupIcons, messageIcons } from './icons';
@@ -198,11 +199,11 @@ export class ReposProvider extends BaseTreeProvider {
         '',
         `默认分支：\`${repo.default_branch}\``,
         `开放 Issue：${repo.open_issues_count ?? 0} · 开放 PR：${repo.open_pr_counter ?? 0} · 分支：${repo.branch_count ?? '-'}`,
-        `Actions：${repo.has_actions === false ? '已关闭' : '已启用'}${repo.language ? ` · 主语言：${repo.language}` : ''}`,
+        `工作流：${repo.has_actions === false ? '未启用' : '已启用'}${repo.language ? ` · 主语言：${repo.language}` : ''}`,
         '',
         repo.has_actions === false
           ? ''
-          : '> 这里的 Actions 指**功能是否启用**；「仓库里是否真有 workflow 文件」需要逐个仓库查询，列表不做这一请求。\n',
+          : '> 这里的「工作流」指 Gitea 的 **Actions 功能是否启用**；「仓库里是否真有 workflow 文件」需要逐个仓库查询，列表不做这一请求。\n',
         `[在浏览器中打开](${repo.html_url})`,
       ]
         .filter((line) => line.length > 0)
@@ -231,22 +232,25 @@ export class ReposProvider extends BaseTreeProvider {
       createGroupNode('分支', groupIcons.branches(), () => this.loadBranches(owner, repo)),
       createGroupNode('打开的 Issue', groupIcons.issues(), () => this.loadIssues(owner, repo)),
       createGroupNode('打开的 Pull Request', groupIcons.pulls(), () => this.loadPulls(owner, repo)),
-      createGroupNode('Actions', actionIcons.runs(), () => this.loadActionGroups(owner, repo)),
+      createGroupNode('工作流', actionIcons.runs(), () => this.loadActionGroups(owner, repo)),
     ];
   }
 
   /**
-   * 加载 Actions 下的二级分组。
+   * 加载「工作流」下的二级分组。
    *
    * 之所以再分一层而不是直接混排：工作流是「定义」，运行记录是「执行结果」，
    * 混在一起会让「有 3 个工作流、37 次运行」看起来像 40 个同类条目。
+   *
+   * 内层叫「工作流定义」而非「工作流」：外层已经是「工作流」（界面里叫工作流比 Actions
+   * 贴切），同名会让树里出现两级一模一样的标签。
    * @param owner 所属者
    * @param repo 仓库名
    * @returns 分组节点
    */
   private async loadActionGroups(owner: string, repo: string): Promise<GiteaNode[]> {
     return [
-      createGroupNode('工作流', actionIcons.workflows(), () => this.loadWorkflows(owner, repo)),
+      createGroupNode('工作流定义', actionIcons.workflows(), () => this.loadWorkflows(owner, repo)),
       createGroupNode('最近运行', actionIcons.runs(), () => this.loadActionRuns(owner, repo)),
     ];
   }
@@ -261,7 +265,7 @@ export class ReposProvider extends BaseTreeProvider {
     const operations = await this.service.getOperations();
     const workflows = await operations.actions.listWorkflows({ owner, repo });
     if (workflows.length === 0) {
-      return [createMessageNode('没有配置 Actions 工作流。', messageIcons.noWorkflow)];
+      return [createMessageNode('没有配置工作流定义。', messageIcons.noWorkflow)];
     }
     const serverUrl = readSettings().serverUrl;
     return workflows.map((workflow) =>
@@ -293,7 +297,7 @@ export class ReposProvider extends BaseTreeProvider {
       limit: this.capOf(key, settings.pageSize),
     });
     if (result.items.length === 0) {
-      return [createMessageNode('没有 Actions 运行记录。', messageIcons.noRun)];
+      return [createMessageNode('没有运行记录。', messageIcons.noRun)];
     }
     const serverUrl = readSettings().serverUrl;
     const nodes = result.items.map((run) =>
@@ -334,9 +338,22 @@ export class ReposProvider extends BaseTreeProvider {
    */
   private async loadActionJobs(owner: string, repo: string, runId: number): Promise<GiteaNode[]> {
     const operations = await this.service.getOperations();
-    const jobs = await operations.actions.listRunJobs(owner, repo, runId);
+    // 不把异常直接抛给树视图：那会弹一句通用的「Gitea 命令失败：资源不存在，或当前令牌
+    // 无权访问」，而实际上多半只是这条运行记录已被清理或删除。降级成说明节点，原因写进日志。
+    const jobs = await operations.actions.listRunJobs(owner, repo, runId).catch((error: unknown) => {
+      logWarn(`读取运行 ${runId} 的作业失败`, error);
+      return null;
+    });
+    if (jobs === null) {
+      return [
+        createMessageNode(
+          '读取该运行的作业失败（记录可能已被清理，详情见「Gitea: 显示日志」）。',
+          messageIcons.noRun,
+        ),
+      ];
+    }
     if (jobs.length === 0) {
-      return [createMessageNode('该运行暂无作业（可能仍在排队）。', messageIcons.noRun)];
+      return [createMessageNode('该运行暂无作业（可能仍在排队，或运行已被取消）。', messageIcons.noRun)];
     }
     return jobs.map((job) =>
       createActionJobNode({

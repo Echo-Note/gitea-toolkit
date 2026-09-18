@@ -30,7 +30,7 @@ export function repoBadge(repo: GiteaRepository, currentFullName?: string): stri
     parts.push('已归档');
   }
   if (repo.has_actions === false) {
-    parts.push('Actions 关闭');
+    parts.push('工作流未启用');
   }
 
   // 2) 容易分辨仓库的固有属性

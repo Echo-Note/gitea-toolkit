@@ -30,10 +30,10 @@ const repoArgs = {
 export const actionTools: GiteaToolDefinition[] = [
   defineTool({
     name: 'gitea_list_workflows',
-    displayName: '列出 Actions 工作流',
+    displayName: '列出工作流',
     description:
-      '列出仓库的全部 Gitea Actions 工作流（即 .gitea/workflows 下的 YAML），包含启用状态与工作流 ID。',
-    userDescription: '列出 Gitea Actions 工作流',
+      '列出仓库的全部工作流（即 .gitea/workflows 下的 YAML），包含启用状态与工作流 ID。',
+    userDescription: '列出 Gitea 工作流',
     category: 'action',
     access: 'read',
     inputShape: { ...repoArgs },
@@ -42,7 +42,7 @@ export const actionTools: GiteaToolDefinition[] = [
       const workflows = await ctx.operations.actions.listWorkflows({ owner, repo });
       if (workflows.length === 0) {
         return {
-          text: `${owner}/${repo} 没有配置任何 Actions 工作流（应在 \`.gitea/workflows/\` 下）。`,
+          text: `${owner}/${repo} 没有配置任何工作流（应在 \`.gitea/workflows/\` 下）。`,
           data: { items: [] },
         };
       }
@@ -55,10 +55,10 @@ export const actionTools: GiteaToolDefinition[] = [
 
   defineTool({
     name: 'gitea_list_action_runs',
-    displayName: '列出 Actions 运行记录',
+    displayName: '列出工作流运行记录',
     description:
-      '列出仓库的 Actions 运行记录，支持按触发事件、分支、状态、触发者、提交 SHA 过滤，用于排查 CI 是否通过。',
-    userDescription: '列出 Actions 运行记录',
+      '列出仓库的工作流运行记录，支持按触发事件、分支、状态、触发者、提交 SHA 过滤，用于排查 CI 是否通过。',
+    userDescription: '列出工作流运行记录',
     category: 'action',
     access: 'read',
     inputShape: {
@@ -89,7 +89,7 @@ export const actionTools: GiteaToolDefinition[] = [
         limit: input.limit ?? 20,
       });
       if (result.items.length === 0) {
-        return { text: '没有匹配的 Actions 运行记录。', data: { items: [] } };
+        return { text: '没有匹配的运行记录。', data: { items: [] } };
       }
       const more = result.pageInfo.hasNextPage ? '\n\n_还有更多记录，可调整过滤条件或增大 limit。_' : '';
       return {
@@ -101,10 +101,10 @@ export const actionTools: GiteaToolDefinition[] = [
 
   defineTool({
     name: 'gitea_get_action_run',
-    displayName: '获取 Actions 运行详情',
+    displayName: '获取工作流运行详情',
     description:
-      '获取单次 Actions 运行（workflow run）的详情，并列出它包含的全部作业及其步骤状态，用于定位是哪一步失败。',
-    userDescription: '查看 Actions 运行详情',
+      '获取单次工作流运行（workflow run）的详情，并列出它包含的全部作业及其步骤状态，用于定位是哪一步失败。',
+    userDescription: '查看工作流运行详情',
     category: 'action',
     access: 'read',
     inputShape: {
@@ -145,8 +145,8 @@ export const actionTools: GiteaToolDefinition[] = [
     name: 'gitea_get_job_logs',
     displayName: '获取作业日志',
     description:
-      '获取某个 Actions 作业的原始日志文本。默认只保留**末尾**若干行，因为失败信息通常出现在最后。',
-    userDescription: '查看 Actions 作业日志',
+      '获取某个工作流作业的原始日志文本。默认只保留**末尾**若干行，因为失败信息通常出现在最后。',
+    userDescription: '查看作业日志',
     category: 'action',
     access: 'read',
     inputShape: {
@@ -177,9 +177,9 @@ export const actionTools: GiteaToolDefinition[] = [
 
   defineTool({
     name: 'gitea_list_artifacts',
-    displayName: '列出 Actions 产物',
-    description: '列出仓库的 Actions 构建产物（artifact），包含大小与是否已过期。',
-    userDescription: '列出 Actions 构建产物',
+    displayName: '列出构建产物',
+    description: '列出仓库的工作流构建产物（artifact），包含大小与是否已过期。',
+    userDescription: '列出构建产物',
     category: 'action',
     access: 'read',
     inputShape: {
@@ -207,11 +207,11 @@ export const actionTools: GiteaToolDefinition[] = [
 
   defineTool({
     name: 'gitea_dispatch_workflow',
-    displayName: '触发 Actions 工作流',
+    displayName: '触发工作流',
     description:
-      '手动触发一个声明了 `on: workflow_dispatch` 的 Gitea Actions 工作流，可指定分支/标签/提交与 inputs。' +
+      '手动触发一个声明了 `on: workflow_dispatch` 的 Gitea 工作流，可指定分支/标签/提交与 inputs。' +
       '若工作流未声明 workflow_dispatch，服务端会拒绝。',
-    userDescription: '手动触发 Gitea Actions 工作流',
+    userDescription: '手动触发 Gitea 工作流',
     category: 'action',
     access: 'write',
     inputShape: {
@@ -247,11 +247,11 @@ export const actionTools: GiteaToolDefinition[] = [
 
   defineTool({
     name: 'gitea_rerun_action',
-    displayName: '重新运行 Actions',
+    displayName: '重新运行工作流',
     description:
-      '重新运行一次 Actions 运行记录：可整条重跑，也可只重跑失败的作业。' +
+      '重新运行一次工作流运行记录：可整条重跑，也可只重跑失败的作业。' +
       '注意 Gitea 的 API **不提供取消运行**，只有重跑。',
-    userDescription: '重新运行 Gitea Actions',
+    userDescription: '重新运行 Gitea 工作流',
     category: 'action',
     access: 'write',
     inputShape: {
@@ -279,9 +279,9 @@ export const actionTools: GiteaToolDefinition[] = [
 
   defineTool({
     name: 'gitea_set_workflow_enabled',
-    displayName: '启用/停用 Actions 工作流',
-    description: '启用或停用一个 Gitea Actions 工作流。停用后该工作流不会响应任何触发事件。',
-    userDescription: '启用或停用 Gitea Actions 工作流',
+    displayName: '启用/停用工作流',
+    description: '启用或停用一个 Gitea 工作流。停用后该工作流不会响应任何触发事件。',
+    userDescription: '启用或停用 Gitea 工作流',
     category: 'action',
     access: 'write',
     inputShape: {

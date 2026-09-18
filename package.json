@@ -1,8 +1,8 @@
 {
   "name": "gitea-toolkit",
   "displayName": "Gitea Toolkit",
-  "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知 / Actions，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
-  "version": "0.8.2",
+  "description": "Gitea 一体化工具：侧边栏浏览仓库 / Issue / PR / 通知 / 工作流，内置 MCP Server 与语言模型工具，供 CodeBuddy、Copilot 等 AI 助手直接调用 Gitea API。",
+  "version": "0.8.3",
   "publisher": "echo-note",
   "license": "MIT",
   "repository": {
@@ -271,7 +271,7 @@
       },
       {
         "command": "gitea.rerunAction",
-        "title": "Gitea: 重跑 Actions",
+        "title": "Gitea: 重跑工作流",
         "category": "Gitea",
         "icon": "$(debug-restart)"
       },
@@ -770,7 +770,7 @@
       {
         "name": "giteaToolkit_gitea_get_commit_status",
         "displayName": "查询提交状态",
-        "modelDescription": "查询某个分支 / 标签 / 提交的 CI 合并状态（Gitea Actions 等）。返回 overall 状态与每个检查项的明细，可用于判断 PR 是否通过检查。",
+        "modelDescription": "查询某个分支 / 标签 / 提交的 CI 合并状态（Gitea 工作流等）。返回 overall 状态与每个检查项的明细，可用于判断 PR 是否通过检查。",
         "userDescription": "查询提交 CI 状态",
         "toolReferenceName": "gitea_get_commit_status",
         "canBeReferencedInPrompt": true,
@@ -1609,9 +1609,9 @@
       },
       {
         "name": "giteaToolkit_gitea_list_workflows",
-        "displayName": "列出 Actions 工作流",
-        "modelDescription": "列出仓库的全部 Gitea Actions 工作流（即 .gitea/workflows 下的 YAML），包含启用状态与工作流 ID。",
-        "userDescription": "列出 Gitea Actions 工作流",
+        "displayName": "列出工作流",
+        "modelDescription": "列出仓库的全部工作流（即 .gitea/workflows 下的 YAML），包含启用状态与工作流 ID。",
+        "userDescription": "列出 Gitea 工作流",
         "toolReferenceName": "gitea_list_workflows",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -1636,9 +1636,9 @@
       },
       {
         "name": "giteaToolkit_gitea_list_action_runs",
-        "displayName": "列出 Actions 运行记录",
-        "modelDescription": "列出仓库的 Actions 运行记录，支持按触发事件、分支、状态、触发者、提交 SHA 过滤，用于排查 CI 是否通过。",
-        "userDescription": "列出 Actions 运行记录",
+        "displayName": "列出工作流运行记录",
+        "modelDescription": "列出仓库的工作流运行记录，支持按触发事件、分支、状态、触发者、提交 SHA 过滤，用于排查 CI 是否通过。",
+        "userDescription": "列出工作流运行记录",
         "toolReferenceName": "gitea_list_action_runs",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -1689,9 +1689,9 @@
       },
       {
         "name": "giteaToolkit_gitea_get_action_run",
-        "displayName": "获取 Actions 运行详情",
-        "modelDescription": "获取单次 Actions 运行（workflow run）的详情，并列出它包含的全部作业及其步骤状态，用于定位是哪一步失败。",
-        "userDescription": "查看 Actions 运行详情",
+        "displayName": "获取工作流运行详情",
+        "modelDescription": "获取单次工作流运行（workflow run）的详情，并列出它包含的全部作业及其步骤状态，用于定位是哪一步失败。",
+        "userDescription": "查看工作流运行详情",
         "toolReferenceName": "gitea_get_action_run",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -1725,8 +1725,8 @@
       {
         "name": "giteaToolkit_gitea_get_job_logs",
         "displayName": "获取作业日志",
-        "modelDescription": "获取某个 Actions 作业的原始日志文本。默认只保留**末尾**若干行，因为失败信息通常出现在最后。",
-        "userDescription": "查看 Actions 作业日志",
+        "modelDescription": "获取某个工作流作业的原始日志文本。默认只保留**末尾**若干行，因为失败信息通常出现在最后。",
+        "userDescription": "查看作业日志",
         "toolReferenceName": "gitea_get_job_logs",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -1765,9 +1765,9 @@
       },
       {
         "name": "giteaToolkit_gitea_list_artifacts",
-        "displayName": "列出 Actions 产物",
-        "modelDescription": "列出仓库的 Actions 构建产物（artifact），包含大小与是否已过期。",
-        "userDescription": "列出 Actions 构建产物",
+        "displayName": "列出构建产物",
+        "modelDescription": "列出仓库的工作流构建产物（artifact），包含大小与是否已过期。",
+        "userDescription": "列出构建产物",
         "toolReferenceName": "gitea_list_artifacts",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -1802,9 +1802,9 @@
       },
       {
         "name": "giteaToolkit_gitea_dispatch_workflow",
-        "displayName": "触发 Actions 工作流",
-        "modelDescription": "手动触发一个声明了 `on: workflow_dispatch` 的 Gitea Actions 工作流，可指定分支/标签/提交与 inputs。若工作流未声明 workflow_dispatch，服务端会拒绝。",
-        "userDescription": "手动触发 Gitea Actions 工作流",
+        "displayName": "触发工作流",
+        "modelDescription": "手动触发一个声明了 `on: workflow_dispatch` 的 Gitea 工作流，可指定分支/标签/提交与 inputs。若工作流未声明 workflow_dispatch，服务端会拒绝。",
+        "userDescription": "手动触发 Gitea 工作流",
         "toolReferenceName": "gitea_dispatch_workflow",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -1848,9 +1848,9 @@
       },
       {
         "name": "giteaToolkit_gitea_rerun_action",
-        "displayName": "重新运行 Actions",
-        "modelDescription": "重新运行一次 Actions 运行记录：可整条重跑，也可只重跑失败的作业。注意 Gitea 的 API **不提供取消运行**，只有重跑。",
-        "userDescription": "重新运行 Gitea Actions",
+        "displayName": "重新运行工作流",
+        "modelDescription": "重新运行一次工作流运行记录：可整条重跑，也可只重跑失败的作业。注意 Gitea 的 API **不提供取消运行**，只有重跑。",
+        "userDescription": "重新运行 Gitea 工作流",
         "toolReferenceName": "gitea_rerun_action",
         "canBeReferencedInPrompt": true,
         "tags": [
@@ -1887,9 +1887,9 @@
       },
       {
         "name": "giteaToolkit_gitea_set_workflow_enabled",
-        "displayName": "启用/停用 Actions 工作流",
-        "modelDescription": "启用或停用一个 Gitea Actions 工作流。停用后该工作流不会响应任何触发事件。",
-        "userDescription": "启用或停用 Gitea Actions 工作流",
+        "displayName": "启用/停用工作流",
+        "modelDescription": "启用或停用一个 Gitea 工作流。停用后该工作流不会响应任何触发事件。",
+        "userDescription": "启用或停用 Gitea 工作流",
         "toolReferenceName": "gitea_set_workflow_enabled",
         "canBeReferencedInPrompt": true,
         "tags": [

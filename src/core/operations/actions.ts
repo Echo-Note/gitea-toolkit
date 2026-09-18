@@ -9,6 +9,7 @@
  *   - 作业**日志**由 `/actions/jobs/{job_id}/logs` 返回**纯文本**，必须走 `responseType: 'text'`，
  *     否则 JSON 解析会直接失败。
  */
+import { GiteaApiError } from '../errors';
 import type { GiteaClient } from '../giteaClient';
 import type {
   GiteaActionArtifact,
@@ -245,15 +246,28 @@ export class ActionOperations {
 
   /**
    * 读取作业日志（纯文本）。
+   *
+   * **404 按「没有日志」处理，不抛错**：作业被取消、或还没开始执行时，服务端根本不存在
+   * 日志文件，该接口会返回 404（swagger 里本来就声明了 400/404）。这不是异常，
+   * 更不是「无权访问」—— 用户在「最近运行」里点开一个已取消的作业时，本来会看到
+   * 一句吓人的「资源不存在，或当前令牌无权访问」。
+   *
    * @param owner 所属者
    * @param repo 仓库名
    * @param jobId 作业 ID
    * @returns 日志文本；服务端无内容时返回空串
    */
-  public getJobLogs(owner: string, repo: string, jobId: number): Promise<string> {
-    return this.client.request<string>('GET', actionsPath(owner, repo, `/jobs/${jobId}/logs`), {
-      responseType: 'text',
-    });
+  public async getJobLogs(owner: string, repo: string, jobId: number): Promise<string> {
+    try {
+      return await this.client.request<string>('GET', actionsPath(owner, repo, `/jobs/${jobId}/logs`), {
+        responseType: 'text',
+      });
+    } catch (error) {
+      if (error instanceof GiteaApiError && error.isNotFound) {
+        return '';
+      }
+      throw error;
+    }
   }
 
   /**

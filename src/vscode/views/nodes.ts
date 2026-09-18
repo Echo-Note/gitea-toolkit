@@ -291,7 +291,7 @@ export function createActionRunNode(
 }
 
 /**
- * 创建 Actions 作业节点。点击在编辑器中打开日志。
+ * 创建工作流作业节点。点击在输出面板里查看日志。
  * @param payload 业务数据
  * @returns 节点
  */
@@ -299,7 +299,7 @@ export function createActionJobNode(payload: ActionJobNodePayload): GiteaNode {
   const node = new GiteaNode('actionJob', payload.name, vscode.TreeItemCollapsibleState.None, payload);
   node.iconPath = toThemeIcon(actionStateIcon(payload.status, payload.conclusion));
   node.tooltip = new vscode.MarkdownString(
-    `**${payload.name}** \`${payload.status ?? ''}\` / \`${payload.conclusion ?? ''}\`\n\n点击查看日志`,
+    `**${payload.name}** \`${payload.status ?? ''}\` / \`${payload.conclusion ?? ''}\`\n\n点击在输出面板查看日志`,
   );
   node.command = { command: 'gitea.showJobLogs', title: '查看日志', arguments: [node] };
   return node;

@@ -1,17 +1,17 @@
 # Gitea Toolkit（VS Code 扩展）
 
 把 Gitea 搬进编辑器，并让 AI 助手（**CodeBuddy**、Copilot、Cursor 等）直接操作 Gitea：
-仓库、分支、Issue、Pull Request、通知、**Actions** 的读写全部通过同一套工具暴露给模型。
+仓库、分支、Issue、Pull Request、通知、**工作流** 的读写全部通过同一套工具暴露给模型。
 
 - 目标：Gitea **1.26.4**（API 依据其 OpenAPI 规范 `swagger.v1.json` 逐项核对）
 - 侧边栏 4 个视图：仓库 / 我的 Issue / 我的 Pull Request / 通知
-  （仓库节点下含 **Actions** 分组：工作流、运行记录、作业日志）
+  （仓库节点下含 **工作流** 分组：工作流定义、最近运行；点作业在**输出面板**看日志）
 - 「仓库」视图**按组织分组**、**当前工作区仓库置顶**，仓库名右侧带**铭牌**
-  （语言 / 分支数 / 开放 Issue·PR / Actions 状态）
+  （语言 / 分支数 / 开放 Issue·PR / 工作流状态）
 - 仓库可**按名称或 `owner/repo` 搜索**（走服务端，覆盖全部仓库而非仅已加载的）
 - 列表支持**「加载更多」**，没有条数硬上限
 - **Issue / PR 详情交互面板**：回复、关闭、重新打开、评审、合并、检出分支
-- **Gitea Actions**：列出工作流与运行、查看作业日志、触发 / 重跑工作流
+- **工作流**（Gitea Actions）：列出工作流定义与运行记录、触发 / 重跑、在输出面板查看作业日志
 - 29 个编辑器命令 + **35 个 AI 工具**
 - 两种 AI 接入方式：**MCP Server**（stdio）与 **语言模型工具**（`vscode.lm.registerTool`）
 
@@ -393,7 +393,7 @@ npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令
 | Issue（6） | `gitea_list_issues`、`gitea_get_issue`、`gitea_create_issue`、`gitea_update_issue`、`gitea_comment_issue`、`gitea_list_issue_comments` |
 | Pull Request（7） | `gitea_list_pulls`、`gitea_get_pull`、`gitea_get_pull_diff`、`gitea_list_pull_files`、`gitea_create_pull`、`gitea_merge_pull`、`gitea_review_pull` |
 | 账号 / 通知（4） | `gitea_get_current_user`、`gitea_list_orgs`、`gitea_list_notifications`、`gitea_mark_notifications_read` |
-| Gitea Actions（8） | `gitea_list_workflows`、`gitea_list_action_runs`、`gitea_get_action_run`、`gitea_get_job_logs`、`gitea_list_artifacts`、`gitea_dispatch_workflow`、`gitea_rerun_action`、`gitea_set_workflow_enabled` |
+| 工作流（8） | `gitea_list_workflows`、`gitea_list_action_runs`、`gitea_get_action_run`、`gitea_get_job_logs`、`gitea_list_artifacts`、`gitea_dispatch_workflow`、`gitea_rerun_action`、`gitea_set_workflow_enabled` |
 
 `gitea_create_issue` / `gitea_update_issue` 的 `labels` 接受**标签名称**（大小写不敏感），
 扩展会自动解析为 Gitea 需要的标签 ID，无法识别的标签会被忽略并在结果中说明。
