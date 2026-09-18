@@ -97,7 +97,7 @@ export function buildMcpServerEntry(options: {
     command: launch.command,
     args: [options.scriptPath],
     env,
-    description: 'Gitea Toolkit：仓库 / Issue / PR / 通知 读写工具',
+    description: 'Gitea Toolkit：仓库 / Issue / PR / 通知 / Actions 读写工具',
   };
 }
 

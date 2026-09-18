@@ -47,7 +47,7 @@ export function readEnv(env: NodeJS.ProcessEnv = process.env): ServerEnv {
 }
 
 /** 命令行用法说明。 */
-const USAGE = `gitea-toolkit-mcp —— Gitea 仓库 / Issue / PR / 通知 的 MCP 工具服务（stdio）
+const USAGE = `gitea-toolkit-mcp —— Gitea 仓库 / Issue / PR / 通知 / Actions 的 MCP 工具服务（stdio）
 
 用法：
   gitea-toolkit-mcp [选项]
@@ -284,7 +284,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
 
   const server = new McpServer(
     { name: 'gitea-toolkit', version: resolveVersion() },
-    { instructions: 'Gitea 仓库 / Issue / Pull Request / 通知 的读写工具。未显式指定 owner、repo 时会尝试从当前工作目录的 git origin 远端推断。' },
+    { instructions: 'Gitea 仓库 / Issue / Pull Request / 通知 / Actions 的读写工具。未显式指定 owner、repo 时会尝试从当前工作目录的 git origin 远端推断。' },
   );
   registerTools(server, context, config.maxOutputLength);
 
