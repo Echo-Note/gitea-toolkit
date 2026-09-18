@@ -2,6 +2,41 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [0.9.0] - 2026-09-18
+
+### 变更
+
+- **独立 MCP 包改发布到公共 npm registry**（`registry.npmjs.org`，此前是 GitHub Packages）。
+
+  0.7.0 时为了让发布流程「不需要额外 secret」，把 `@echo-note/gitea-toolkit-mcp` 发到了
+  GitHub Packages。但那个源有个硬伤：**匿名装不了** —— 连公开包也要求先配 PAT 与
+  `~/.npmrc`；而且 `package-lock.json` 会硬编码 registry 地址，一旦提交，协作者
+  `npm install` 就会因为没有令牌而失败。用户实际只能去 Releases 下 tarball，体验很差。
+
+  而 ModelScope MCP 广场对「可托管部署」的 STDIO 型服务**明确要求包在 npmjs.org / PyPI 上**。
+  因此改回公共 registry，现在一行即可用：
+
+  ```bash
+  npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
+  ```
+
+  顺带：
+  - 加上 `npm publish --provenance`（来源证明，把「这个包确实由本仓库的这次构建产出」
+    写进 npm 的签名记录）
+  - 移除为 GitHub Packages 写的包级 `.npmrc`（作用域映射不再需要）
+  - Releases 里的 `.tgz` 附件**保留**，作为离线 / 固定版本场景的备用通路
+
+  启用方式：仓库 secret **`NPM_TOKEN`**（未配置时静默跳过，不阻断发版）。
+  唯一前置条件：`@echo-note` 这个 scope 需已在 npmjs.org 注册。
+
+### 工程
+
+- CI 的发布 job 由 `publish-ghpkg` 更名为 `publish-npm`，权限从 `packages: write`
+  改为 `id-token: write`（`--provenance` 需要）。
+- README 的「接入 AI 助手」一节按公共 registry 重写（原先那段 GitHub Packages 的
+  一次性认证说明已不再需要）。
+
+
 ## [0.8.5] - 2026-09-18
 
 ### 变更

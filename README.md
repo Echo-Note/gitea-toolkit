@@ -228,7 +228,7 @@ Markdown 代码块、表格、任务列表都由 Gitea 服务端渲染，与网�
 | --- | --- |
 | **CodeBuddy** | **不消费** VS Code 的 MCP 贡献点，必须落盘 → 执行 `Gitea: 写入 CodeBuddy MCP 配置` |
 | **VS Code** | 支持 MCP Definition Provider → 扩展激活后自动出现在 MCP 面板，**无需落盘** |
-| **其它 MCP 客户端** | **不必装扩展**：用独立包 `@echo-note/gitea-toolkit-mcp`（发布在 GitHub Packages，需先配 `.npmrc`，见下） |
+| **其它 MCP 客户端** | **不必装扩展**：用独立包 `@echo-note/gitea-toolkit-mcp`（发布在**公共 npm**，直接 `npx`，见下） |
 
 > 这一点实测确认过：CodeBuddy 的 MCP 面板完全由 `~/.codebuddy/mcp.json` 驱动。
 > 即使扩展已经在 `package.json` 声明 `contributes.mcpServerDefinitionProviders`
@@ -294,28 +294,18 @@ npx -y https://github.com/Echo-Note/gitea-toolkit/releases/latest/download/gitea
 
 想锁定版本就把 `latest` 换成具体 tag，例如 `releases/download/v0.7.0/gitea-toolkit-mcp.tgz`。
 
-**② 或者从 GitHub Packages 装（一次性配置后命令更短）。**
+**② 直接从 npm 装（推荐，命令最短）。**
 
-包也发布在 GitHub Packages（`@echo-note/gitea-toolkit-mcp`）。但要注意：**GitHub Packages 的
-npm 源不支持匿名安装** —— 官方文档明确写着发布、安装、删除**公开**包同样需要访问令牌
-（这与它的 Container registry 不同，后者公开镜像可匿名拉取）。所以要先做一次性认证：
-
-```bash
-# 1. 建一个 classic PAT，勾选 read:packages：https://github.com/settings/tokens
-# 2. 写入 ~/.npmrc
-cat >> ~/.npmrc <<'EOF'
-@echo-note:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=<你的 PAT>
-EOF
-```
+包发布在**公共 npm registry**（`@echo-note/gitea-toolkit-mcp`），**无需任何认证**：
 
 ```bash
 npx -y @echo-note/gitea-toolkit-mcp --url https://gitea.example.com --token <令牌>
 ```
 
-> 如果你需要把这个包作为**依赖**放进项目：注意 `package-lock.json` 会**硬编码** registry 地址，
-> 一旦提交，别人 `npm install` 会因为没有令牌而失败。这是 GitHub Packages 的已知坑，
-> 团队协作场景建议优先考虑方式 ① 或改用 npmjs.org。
+> 0.7.0–0.8.5 期间曾发在 GitHub Packages，但那个源**匿名装不了** ——
+> 连公开包也要求先配 PAT 与 `~/.npmrc`；而且 `package-lock.json` 会**硬编码** registry 地址，
+> 一旦提交，协作者 `npm install` 就会因为没有令牌而失败。
+> **0.9.0 起改回公共 registry**，上面这一行即可。
 
 `--help` 可查看全部参数（`--no-verify-tls`、`--timeout`、`--max-output`），命令行参数优先于环境变量。
 包目录里的 README 有 Claude Desktop / Cursor 的完整示例。
@@ -539,7 +529,7 @@ npx vsce publish --packagePath gitea-toolkit-<版本>.vsix
 resolve          解析版本号 + 判断该版本是否已发（看 Release 是否存在）
    ├─ publish-ovsx      发布到 Open VSX              ┐
    ├─ publish-vsce      发布到 VS Code Marketplace   ├ 三个并行执行
-   └─ publish-ghpkg     发布到 GitHub Packages       ┘
+   └─ publish-npm       发布到 npm（公共 registry）   ┘
 release          三个都成功后才创建 tag 与 Release
 ```
 
@@ -553,7 +543,7 @@ release          三个都成功后才创建 tag 与 Release
 | --- | --- | --- |
 | **`OVSX_PAT`** | open-vsx.org 生成的访问令牌 | Open VSX |
 | **`VSCE_PAT`** | Azure DevOps PAT（Organization 须选 *All accessible organizations*，作用域须含 *Marketplace → Manage*） | VS Code Marketplace |
-| *（无需配置）* | 用 workflow 内置的 `GITHUB_TOKEN` | GitHub Packages |
+| **`NPM_TOKEN`** | npmjs.org 的 access token（需对 `@echo-note` scope 有发布权） | npm（公共 registry） |
 
 设计上的三点（三个目标一致）：
 

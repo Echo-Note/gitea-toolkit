@@ -1,9 +1,10 @@
 {
   "name": "@echo-note/gitea-toolkit-mcp",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "description": "Gitea 的 MCP 工具服务（stdio）：35 个工具覆盖仓库 / Issue / Pull Request / 通知 / Gitea Actions 的读写。独立于 VS Code 扩展，任何 MCP 客户端（Claude Desktop、Cursor、CodeBuddy…）均可接入。",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "keywords": [
     "mcp",
