@@ -7,8 +7,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Annotated
+
+from pydantic import Field
 
 from ..client import GiteaClient
+from ..repo_ref import RepoRef, resolve_repo_ref
+
+#: ``owner`` / ``repo`` 两个入参的公共片段。
+#:
+#: 放在这里而不是各工具模块各写一遍：这两段文案必须**逐字一致** ——
+#: 同一个字段在 Issue 域与 PR 域显示出不同描述，会让模型对「省略会怎样」产生分歧。
+OWNER_ARG = Annotated[
+    str | None,
+    Field(description="仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"),
+]
+REPO_ARG = Annotated[
+    str | None,
+    Field(description="仓库名。省略时使用当前工作区推断出的仓库。"),
+]
 
 
 @dataclass
@@ -46,6 +63,15 @@ def ctx() -> ToolContext:
     return _context
 
 
+def resolve_repo(owner: str | None, repo: str | None) -> RepoRef:
+    """解析本次调用作用在哪个仓库（显式参数优先，其次从工作目录的 git origin 推断）。
+
+    Raises:
+        ValueError: 既没显式给全、也无法从工作目录推断时
+    """
+    return resolve_repo_ref(owner, repo, ctx().server_url)
+
+
 def relative_time(value: str | None) -> str:
     """把 ISO 时间转成「3 天前」这类相对表述；解析不了就原样返回。"""
     if not value:
@@ -74,4 +100,12 @@ def relative_time(value: str | None) -> str:
     return moment.strftime("%Y-%m-%d")
 
 
-__all__ = ["ToolContext", "ctx", "relative_time", "set_context"]
+__all__ = [
+    "OWNER_ARG",
+    "REPO_ARG",
+    "ToolContext",
+    "ctx",
+    "relative_time",
+    "resolve_repo",
+    "set_context",
+]

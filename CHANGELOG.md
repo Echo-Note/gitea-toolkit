@@ -4,7 +4,64 @@
 
 ## [0.9.1] - 2026-09-18
 
+### 新增
+
+- **Python 版 MCP 工具服务 `gitea-toolkit-mcp`（PyPI）** —— 补齐到 **35 个工具**，
+  与 TypeScript 版**同名、同参数、同返回文本、同错误措辞**，两个实现可互换：
+  同一份提示词与客户端配置在任一实现下都能工作。
+
+  工具名与参数名是按 TS 版的 `inputShape` 逐字对齐的（含 `autoInit` / `filePath` /
+  `deleteBranchAfterMerge` 这类 camelCase，以及 Actions 域刻意保留的 `run_id` 等 snake_case），
+  并有测试逐个断言 —— 两边的漂移会让「可互换」变成空话。
+
+  实现中按实例的 `/swagger.v1.json` 核对出**三处上游细节**，值得记下来：
+
+  - **`EditIssueOption` 根本没有 `labels` 字段**（10 个字段里确实没有）。也就是说
+    把 labels 塞进 `PATCH /issues/{index}` 会被服务端**静默忽略** —— 调用方以为改了标签、
+    实际没改，而且不会报任何错。标签有专门的替换端点 `PUT /issues/{index}/labels`，
+    两个实现都改走它（TS 侧原先也有这个问题，见「修复」）。
+  - **`MergePullRequestOption` 的字段全是小写蛇形**（`do` / `merge_title_field` /
+    `merge_message_field`），按 Go 结构体写成 `Do` 会因缺 `do` 被拒（服务端把 `do` 标为 required）。
+  - **`/repos/issues/search` 与 `/notifications` 的数组参数**要展开成同名重复参数
+    （`status-types=unread&status-types=pinned`），逗号拼接服务端不认。
+
+- **MCP 协议合规性修正**（Python 版，逐条都有测试钉住）：
+
+  - **必填参数真正进了 `inputSchema.required`**。此前 35 个工具里只有 1 个声明了必填 ——
+    因为参数写成 `index: int = 0` 再用运行时 `raise` 兜底，schema 于是宣称「什么都可以不传」，
+    模型只能靠猜，且要等一次往返之后才拿得到报错。现在必填参数排在签名前面、不带默认值，
+    与 TS 版的 zod 声明（没写 `.optional()` 就是必填）一致。
+  - **工具报错终于能到达模型**。MCP Python SDK v2 会把「非 `ToolError` 的异常」统一替换成
+    `Error executing tool <名字>`（原始文案刻意不外泄）—— 结果是中文报错**一个字都传不出去**。
+    现在统一在注册装饰器里包成 `ToolError`。
+  - **每个工具都带 `title`**（取自 TS 版 `displayName`，如「获取 Issue 详情」），
+    `tool.title` 与 `annotations.title` 两处都写，与 TS 版一致。
+  - **`destructiveHint` 如实反映行为**：原本所有写工具一律标破坏性，于是「创建 Issue」
+    也会触发客户端的确认框 —— 用户很快会被训练成无脑点「同意」，真正危险的操作反而失去警示。
+    现在分四档：只读 / **增量写**（建 Issue、评论、提 PR、评审、触发与重跑工作流）/
+    幂等写（标记通知已读）/ 破坏写（更新 Issue、覆盖文件、合并 PR、改工作流开关）。
+  - **跨仓库检索的结果带上了仓库名**：`/repos/issues/search` 的返回带 `repository` 字段，
+    原先没利用 —— 「分配给我的 Issue」会返回一堆看不出属于哪个仓库的条目，模型无法跟进。
+
+- 修掉一个会让 Python 版**完全连不上部分实例**的坑：默认 User-Agent 从
+  `gitea-toolkit-mcp-python` 改为 `gitea-toolkit-mcp`（与 TS 版一致）。
+  起因是实测某实例的**前置 nginx 按 UA 关键字拦截** —— UA 里只要出现 `python`
+  （或干脆不发 UA）就直接 **403 Forbidden**，而那个 403 长得像权限问题，
+  排查时极易被带偏。已加测试防止回退。
+
 ### 修复
+
+- **`gitea_update_issue` 的「整体替换标签」其实一直没生效。** 它把标签 ID 放进
+  `PATCH /repos/{o}/{r}/issues/{index}` 的 body，但按实例 swagger 核对，那个接口的
+  `EditIssueOption` **根本没有 `labels` 字段** —— 服务端**静默忽略**，既不报错也不生效。
+  改为走专用端点 `PUT /issues/{index}/labels`（与 Python 版同一处理），并放在 PATCH
+  **之前**发出，这样 PATCH 返回的实体里带的就是更新后的标签。
+  只有 AI 工具这条路会传 `labels`（扩展自己的命令只传 `{state}`），所以其余行为不变。
+
+- **`gitea_get_repo` 在权限信息为空时会显示一个空荡荡的「- 权限：」。**
+  原代码是 `f"- 权限：" + join(...) or "- 权限：（未知）"` —— `+` 的优先级高于 `or`，
+  而左边永远是非空字符串（至少含「- 权限：」），所以 `or` 那半边是**死代码**，
+  兜底永远不会触发。
 
 - **`--help` 与 MCP 客户端配置示例里的包名漏了 scope。** 原先写的是 `gitea-toolkit-mcp`，
   而 npm 包名是 **`@echo-note/gitea-toolkit-mcp`** —— `gitea-toolkit-mcp` 只是 `bin` 名。

@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 from .account import AccountOperations
+from .actions import ActionOperations
+from .issues import IssueOperations
+from .pulls import PullOperations
 from .repos import RepoOperations
 
-__all__ = ["AccountOperations", "RepoOperations"]
+__all__ = [
+    "AccountOperations",
+    "ActionOperations",
+    "IssueOperations",
+    "PullOperations",
+    "RepoOperations",
+]

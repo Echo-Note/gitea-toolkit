@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 import ssl
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Mapping, Sequence
+from typing import Any
+from collections.abc import Callable, Mapping, Sequence
 from urllib.parse import urlencode
 
 import httpx2
@@ -23,7 +24,15 @@ from .errors import GiteaApiError, GiteaConfigError
 DEFAULT_MAX_RESPONSE_ITEMS = 50
 
 DEFAULT_TIMEOUT_MS = 20_000
-DEFAULT_USER_AGENT = "gitea-toolkit-mcp-python"
+
+#: 请求身份标识（与 TS 版 MCP 的 ``gitea-toolkit-mcp`` 完全一致）。
+#:
+#: ⚠️ **绝不能带上 ``python`` 字样**：实测某实例的**前置 nginx 按 UA 关键字拦截**，
+#: 只要 UA 里出现 ``python``（``Python-urllib/3.11``、``gitea-toolkit-mcp-python`` 都算）
+#: 就直接返回 **403 Forbidden**（HTML 由 nginx 生成，不是 Gitea 的 JSON 错误）。
+#: 这个 403 极易被误读成「令牌权限不足」—— 它跟令牌毫无关系。
+#: 同类坑还有一个：**完全不发 UA**（或空 UA）同样被拦，所以不能把它设成空串。
+DEFAULT_USER_AGENT = "gitea-toolkit-mcp"
 
 
 @dataclass

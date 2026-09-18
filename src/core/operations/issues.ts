@@ -171,18 +171,29 @@ export class IssueOperations {
    * @param options 更新参数
    * @returns 更新后的 Issue
    */
-  public update(
+  public async update(
     owner: string,
     repo: string,
     index: number,
     options: UpdateIssueOptions,
   ): Promise<GiteaIssue> {
+    // ⚠️ 标签**不能**塞进 PATCH 的 body：按实例 swagger 核对，`EditIssueOption` 里
+    //    根本没有 `labels` 字段（10 个字段里确实没有），传了会被服务端**静默忽略** ——
+    //    调用方以为改了标签、实际没改，且不会报任何错。标签有专门的替换端点。
+    //    顺序刻意放在 PATCH **之前**：这样 PATCH 返回的实体里带的就是更新后的标签。
+    if (options.labels !== undefined) {
+      await this.client.request<unknown>(
+        'PUT',
+        `/repos/${enc(owner)}/${enc(repo)}/issues/${index}/labels`,
+        { body: { labels: options.labels } },
+      );
+    }
+
     const body: Record<string, unknown> = {};
     if (options.title !== undefined) body.title = options.title;
     if (options.body !== undefined) body.body = options.body;
     if (options.state !== undefined) body.state = options.state;
     if (options.assignees !== undefined) body.assignees = options.assignees;
-    if (options.labels !== undefined) body.labels = options.labels;
     if (options.milestone !== undefined) body.milestone = options.milestone;
     if (options.dueDate !== undefined) body.due_date = options.dueDate;
     if (options.unsetDueDate) body.unset_due_date = true;

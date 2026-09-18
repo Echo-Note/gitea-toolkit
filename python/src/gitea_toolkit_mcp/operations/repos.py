@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import base64
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 from urllib.parse import quote
 
 from ..client import GiteaClient, ListResult

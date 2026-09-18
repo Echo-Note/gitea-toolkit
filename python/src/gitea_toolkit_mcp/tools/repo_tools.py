@@ -2,27 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Sequence
+from typing import Annotated, Any
+from collections.abc import Sequence
 
 from pydantic import Field
 
 from ..operations import RepoOperations
-from ..repo_ref import resolve_repo_ref
 from ._registry import tool
-from ._shared import ctx, relative_time
-
-_owner = Annotated[
-    str | None,
-    Field(description="仓库所属者（用户名或组织名）。省略时使用当前工作区推断出的仓库。"),
-]
-_repo = Annotated[
-    str | None,
-    Field(description="仓库名。省略时使用当前工作区推断出的仓库。"),
-]
+from ._shared import OWNER_ARG as _owner, REPO_ARG as _repo, ctx, relative_time, resolve_repo
 
 
 def _resolve(owner: str | None, repo: str | None):
-    return resolve_repo_ref(owner, repo, ctx().server_url)
+    """解析仓库坐标（显式参数优先，其次从工作目录的 git origin 推断）。"""
+    return resolve_repo(owner, repo)
 
 
 def _repo_line(item: dict[str, Any]) -> str:
@@ -46,7 +38,7 @@ def _repo_line(item: dict[str, Any]) -> str:
 def register(server: Any) -> None:
     """注册仓库域全部工具。"""
 
-    @tool(server, name="gitea_list_repos")
+    @tool(server, name="gitea_list_repos", title="列出仓库")
     async def gitea_list_repos(
         owner: Annotated[str | None, Field(description="只看某个组织或用户的仓库。")] = None,
         search: Annotated[str | None, Field(description="关键词搜索；提供后会走全文搜索接口。")] = None,
@@ -64,7 +56,7 @@ def register(server: Any) -> None:
         header = f"共 {len(result.items)} 个仓库{more}：\n"
         return c.truncate(header + "\n".join(_repo_line(item) for item in result.items))
 
-    @tool(server, name="gitea_get_repo")
+    @tool(server, name="gitea_get_repo", title="获取仓库详情")
     async def gitea_get_repo(owner: _owner = None, repo: _repo = None) -> str:
         """获取指定 Gitea 仓库的详细信息，包括默认分支、权限、是否为空仓库、克隆地址等。"""
         c = ctx()
@@ -79,9 +71,10 @@ def register(server: Any) -> None:
             f"｜空仓库：{'是' if detail.get('empty') else '否'}"
             f"｜已归档：{'是' if detail.get('archived') else '否'}",
             f"- 未关闭 Issue/PR：{detail.get('open_issues_count', 0)}",
-            f"- 权限："
-            + "、".join(k for k, v in permissions.items() if v)
-            or "- 权限：（未知）",
+            # 权限：原先是 `f"- 权限：" + join(...) or "- 权限：（未知）"` ——
+            # `+` 优先级高于 `or`，而左边永远是非空字符串（至少含「- 权限：」），
+            # 所以 `or` 那半边是**死代码**，无权限时只会显示一个空荡荡的「- 权限：」。
+            "- 权限：" + ("、".join(k for k, v in permissions.items() if v) or "（未知）"),
         ]
         if detail.get("description"):
             lines.append(f"- 描述：{detail['description']}")
@@ -92,7 +85,7 @@ def register(server: Any) -> None:
             lines.append(f"- 最近更新：{updated}")
         return c.truncate("\n".join(lines))
 
-    @tool(server, name="gitea_create_repo", read_only=False)
+    @tool(server, name="gitea_create_repo", title="创建仓库", read_only=False, destructive=False)
     async def gitea_create_repo(
         name: Annotated[str, Field(description="仓库名。")],
         owner: Annotated[str | None, Field(description="组织名；省略则创建到当前用户名下。")] = None,
@@ -118,7 +111,7 @@ def register(server: Any) -> None:
             f"- 克隆地址：{created.get('clone_url') or '（未知）'}"
         )
 
-    @tool(server, name="gitea_list_branches")
+    @tool(server, name="gitea_list_branches", title="列出分支")
     async def gitea_list_branches(
         owner: _owner = None,
         repo: _repo = None,
@@ -137,19 +130,17 @@ def register(server: Any) -> None:
         more = "（还有更多，可调大 limit）" if result.page_info.has_next_page else ""
         return c.truncate(f"共 {len(result.items)} 个分支{more}：\n" + "\n".join(lines))
 
-    @tool(server, name="gitea_create_branch", read_only=False)
+    @tool(server, name="gitea_create_branch", title="创建分支", read_only=False, destructive=False)
     async def gitea_create_branch(
+        newBranch: Annotated[str, Field(min_length=1, description="新分支名。")],
         owner: _owner = None,
         repo: _repo = None,
-        newBranch: Annotated[str | None, Field(description="新分支名。")] = None,
         from_: Annotated[
             str | None, Field(alias="from", description="源分支 / 标签 / 提交 SHA；省略时基于仓库默认分支。")
         ] = None,
     ) -> str:
         """基于已有分支 / 标签 / 提交创建新分支。"""
         c = ctx()
-        if not newBranch:
-            raise ValueError("必须提供 newBranch（新分支名）")
         ref = _resolve(owner, repo)
         created = await RepoOperations(c.client).create_branch(
             ref.owner, ref.repo, new_branch=newBranch, from_ref=from_
@@ -159,7 +150,7 @@ def register(server: Any) -> None:
             f"- 指向提交：`{(created.get('commit') or {}).get('id', '')[:10]}`"
         )
 
-    @tool(server, name="gitea_list_commits")
+    @tool(server, name="gitea_list_commits", title="列出提交")
     async def gitea_list_commits(
         owner: _owner = None,
         repo: _repo = None,
@@ -186,7 +177,7 @@ def register(server: Any) -> None:
         more = "（还有更多，可调大 limit）" if result.page_info.has_next_page else ""
         return c.truncate(f"共 {len(result.items)} 条提交{more}：\n" + "\n".join(lines))
 
-    @tool(server, name="gitea_list_files")
+    @tool(server, name="gitea_list_files", title="列出目录")
     async def gitea_list_files(
         owner: _owner = None,
         repo: _repo = None,
@@ -209,17 +200,15 @@ def register(server: Any) -> None:
         ]
         return c.truncate(f"`{path or '/'}` 下共 {len(entries)} 项：\n" + "\n".join(lines))
 
-    @tool(server, name="gitea_get_file")
+    @tool(server, name="gitea_get_file", title="读取文件")
     async def gitea_get_file(
+        filePath: Annotated[str, Field(min_length=1, description="仓库内文件路径，例如 src/main.ts。")],
         owner: _owner = None,
         repo: _repo = None,
-        filePath: Annotated[str | None, Field(description="仓库内文件路径，例如 src/main.ts。")] = None,
         ref: Annotated[str | None, Field(description="分支名 / 标签 / 提交 SHA。")] = None,
     ) -> str:
         """读取仓库中指定文件的文本内容（自动 base64 解码），同时返回文件 blob SHA，便于后续更新。"""
         c = ctx()
-        if not filePath:
-            raise ValueError("必须提供 filePath（仓库内文件路径）")
         target = _resolve(owner, repo)
         detail = await RepoOperations(c.client).get_file(
             target.owner, target.repo, file_path=filePath, ref=ref
@@ -231,16 +220,14 @@ def register(server: Any) -> None:
         )
         return c.truncate(f"{header}```\n{content}\n```")
 
-    @tool(server, name="gitea_get_commit_status")
+    @tool(server, name="gitea_get_commit_status", title="查询提交状态")
     async def gitea_get_commit_status(
+        ref: Annotated[str, Field(min_length=1, description="分支名 / 标签 / 提交 SHA。")],
         owner: _owner = None,
         repo: _repo = None,
-        ref: Annotated[str | None, Field(description="分支名 / 标签 / 提交 SHA。")] = None,
     ) -> str:
         """查询某个分支 / 标签 / 提交的 CI 合并状态（Gitea 工作流等）。返回 overall 状态与每个检查项的明细，可用于判断 PR 是否通过检查。"""
         c = ctx()
-        if not ref:
-            raise ValueError("必须提供 ref（分支名 / 标签 / 提交 SHA）")
         target = _resolve(owner, repo)
         status = await RepoOperations(c.client).commit_status(target.owner, target.repo, ref)
         lines = [f"**{target.full_name}** `{ref}` 的合并状态：`{status.get('state') or '未知'}`"]
@@ -256,20 +243,18 @@ def register(server: Any) -> None:
             lines.append("- （还没有任何检查项）")
         return c.truncate("\n".join(lines))
 
-    @tool(server, name="gitea_commit_file", read_only=False)
+    @tool(server, name="gitea_commit_file", title="提交文件", read_only=False)
     async def gitea_commit_file(
+        filePath: Annotated[str, Field(min_length=1, description="仓库内文件路径。")],
+        content: Annotated[str, Field(description="文件完整文本内容（无需 base64）。")],
         owner: _owner = None,
         repo: _repo = None,
-        filePath: Annotated[str | None, Field(description="仓库内文件路径。")] = None,
-        content: Annotated[str | None, Field(description="文件完整文本内容（无需 base64）。")] = None,
         message: Annotated[str | None, Field(description="提交信息。")] = None,
         branch: Annotated[str | None, Field(description="目标分支；省略时使用仓库默认分支。")] = None,
         newBranch: Annotated[str | None, Field(description="提供时会在该新分支上提交。")] = None,
     ) -> str:
         """在仓库中创建或更新一个文件并提交。文件已存在时自动带上 blob SHA 执行更新。可通过 `newBranch` 把改动提交到新分支。"""
         c = ctx()
-        if not filePath or content is None:
-            raise ValueError("必须提供 filePath 与 content")
         target = _resolve(owner, repo)
         result = await RepoOperations(c.client).commit_file(
             target.owner,

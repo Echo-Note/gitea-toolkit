@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import account_tools, repo_tools
+from . import account_tools, action_tools, issue_tools, pull_tools, repo_tools
 
 
 def register_all(server: Any) -> None:
@@ -18,6 +18,9 @@ def register_all(server: Any) -> None:
     所以漏改这里会立刻暴露，而不是静默少注册。
     """
     account_tools.register(server)
+    action_tools.register(server)
+    issue_tools.register(server)
+    pull_tools.register(server)
     repo_tools.register(server)
 
 
