@@ -543,7 +543,7 @@ release          三个都成功后才创建 tag 与 Release
 | --- | --- | --- |
 | **`OVSX_PAT`** | open-vsx.org 生成的访问令牌 | Open VSX |
 | **`VSCE_PAT`** | Azure DevOps PAT（Organization 须选 *All accessible organizations*，作用域须含 *Marketplace → Manage*） | VS Code Marketplace |
-| **`NPM_TOKEN`** | npmjs.org 的 access token（需对 `@echo-note` scope 有发布权） | npm（公共 registry） |
+| **`NPM_TOKEN`** | npmjs.org 的 **granular access token，必须勾选「绕过 2FA」**（账号开了 2FA 时缺它会被 403 拒绝）；也可改用下面的 OIDC 可信发布、完全不配此项 | npm（公共 registry） |
 
 设计上的三点（三个目标一致）：
 
@@ -559,6 +559,15 @@ release          三个都成功后才创建 tag 与 Release
    - Open VSX：`/api/<ns>/<name>/<版本>` 在「扩展不存在」时返回 **503 而非 404**，且偶发抖动
    - Marketplace：`extensionquery` 接口查询失败时保守放行，真正的重复由 `--skip-duplicate` 兜住
 
+> **npm 发布也支持 OIDC 可信发布（推荐，无需长期令牌）**：在 npmjs.com 的包设置 →
+> *Trusted publishing* 里添加 GitHub Actions，仓库填 `Echo-Note/gitea-toolkit`、
+> 工作流文件名填 **`ci.yml`**（要与实际文件名完全一致），然后**删掉 `NPM_TOKEN` secret** 即可。
+> 注意两点：可信发布要求包**已存在**（首次仍须用令牌或本地 `npm publish` 发一次）；
+> 另外它会自动生成溯源证明，此时 `repository.url` 必须与仓库地址完全匹配。
+>
+> **凭据类错误不再阻断发版**：npm 的 401/403/2FA 类失败会降级为「提示 + 跳过」，
+> 不会连累 GitHub Release（本项目踩过：市场已发布、Release 却因 npm 卡住而建不出来）。
+>
 > **Release 说明直接取自 CHANGELOG**（不再用 `gh release create --generate-notes` 的自动摘要）：
 > 后者按 commit / PR 罗列，与 CHANGELOG 里那份有分类、有原因、有实测数据的说明完全是两回事。
 > 现在「扩展市场的 Changelog 标签页」「`.vsix` 里的 CHANGELOG」「Release 说明」三者同源，

@@ -6,6 +6,15 @@ out/
 .DS_Store
 .env
 .env.local
+
+# 凭证类文件 —— 绝不要提交。
+# 起因：仓库根目录出现过一个 apikey 文件（45 字节的明文密钥），既没被忽略、
+# 也没进过历史，而本项目的提交流程用 `git add -A`，下一次提交就会把它推到公开仓库。
+apikey
+apikey.*
+secrets.json
+*.pem
+*.key
 *.log
 .eslintcache
 

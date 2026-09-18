@@ -398,13 +398,20 @@ jobs:
 
       - name: 发布到 npm（registry.npmjs.org）
         id: publish
-        # 发布到**公共 npm registry**，secret 为 `NPM_TOKEN`。
+        # 发布到**公共 npm registry**。认证支持两种方式，二选一即可：
+        #   1. secret `NPM_TOKEN`（**必须是带「绕过 2FA」的 granular token**，
+        #      否则 npm 会以 403 拒绝：账号开了 2FA 时，令牌必须显式允许绕过 2FA）
+        #   2. **OIDC 可信发布**（无需任何令牌）—— 在 npm 包设置里配 Trusted Publisher
+        #      指向本仓库的 `ci.yml` 即可；本 job 已声明 id-token: write，满足其要求。
+        #      注意它需要包**已存在**，所以首次发布只能用方式 1 或本地手动发。
+        #
         # 与另外两个市场同样的顺序约束：必须排在创建 Release 之前（见 resolve job）。
         #
         # 发布的是 packages/mcp-server 这个独立包，供 Claude Desktop / Cursor 等
         # 非 VS Code 的 MCP 客户端用 `npx` 直接接入，无需安装扩展。
         if: needs.resolve.outputs.tagExists == 'false'
         env:
+          # 留空也可以：留空时 npm 会尝试 OIDC 可信发布
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
@@ -412,10 +419,9 @@ jobs:
           NAME="$(node -p "require('./${PKG_DIR}/package.json').name")"
           VERSION="$(node -p "require('./${PKG_DIR}/package.json').version")"
 
+          # 认证方式：配了 NPM_TOKEN 就用令牌；没配则交给 OIDC 可信发布
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::notice title=跳过 npm 发布::未配置 NPM_TOKEN secret。产物仍会发到 GitHub Releases 与两个扩展市场；配置该 secret 后本步骤自动启用。"
-            echo "result=skipped" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::notice::未配置 NPM_TOKEN，将尝试 OIDC 可信发布。若也未在 npm 配置 Trusted Publisher，本步骤会以「凭据未就绪」跳过。"
           fi
 
           # 两个包共用同一版本号，是「同一次构建产出、内容一致」的前提。
@@ -431,8 +437,8 @@ jobs:
             exit 1
           }
 
-          # **必须进入包目录再执行 npm**：scope→registry 的映射与认证来自
-          # packages/mcp-server/.npmrc，在仓库根目录跑 npm 读的是根目录的配置，映射不生效。
+          # **进入包目录再执行 npm**：registry 与认证由 setup-node 写入的根 .npmrc
+          # 加上包自身 publishConfig 决定，在包目录里跑保证读到的是本包的配置。
           cd "${PKG_DIR}"
 
           # 幂等：该版本已发布过就跳过（典型场景是 job 失败后重跑）
@@ -442,21 +448,34 @@ jobs:
             exit 0
           fi
 
-          # 加 --provenance：把「这个包确实由本仓库的这次构建产出」写进 npm 的签名记录。
-          # 它只支持发布到公共 registry、且要求仓库公开 —— 本项目两个条件都满足。
-          if ! npm publish --access public --provenance; then
-            # 复查后判定：可能是并发/重跑导致的「版本已存在」，而非真的失败
-            if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
-              echo "::warning title=npm 已有该版本::发布命令报错，但 ${NAME}@${VERSION} 确实已存在，按成功处理。"
-              echo "result=exists" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            echo "::error title=npm 发布失败::请确认 NPM_TOKEN 有效、对 @echo-note 这个 scope 有发布权（该 scope 需已在 npmjs.org 注册），且包名未被占用。"
-            exit 1
+          # --provenance：把「这个包确实由本仓库的这次构建产出」写进 npm 的签名记录。
+          # 走 OIDC 时 npm 会自动生成溯源证明，显式传参也无害。
+          LOG="$(mktemp)"
+          if npm publish --access public --provenance 2>&1 | tee "${LOG}"; then
+            echo "::notice title=已发布到 npm::${NAME}@${VERSION} —— 用户可直接 npx -y ${NAME}"
+            echo "result=published" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-          echo "::notice title=已发布到 npm::${NAME}@${VERSION} —— 用户可直接 npx -y ${NAME}"
-          echo "result=published" >> "$GITHUB_OUTPUT"
+          # 复查后判定：可能是并发/重跑导致的「版本已存在」，而非真的失败
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "::warning title=npm 已有该版本::发布命令报错，但 ${NAME}@${VERSION} 确实已存在，按成功处理。"
+            echo "result=exists" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # **凭据类失败不阻断发版**：那是配置问题，不是代码问题。
+          # 这条规则是踩出来的 —— 令牌缺「绕过 2FA」导致 403 时，两个扩展市场其实已经发布
+          # 成功，却因为 release job needs 本 job 而一直建不出 GitHub Release，整条流水线卡住。
+          # 现在降级为「醒目提示 + 跳过」，配置好凭据后重跑即可补齐（发布步骤本身是幂等的）。
+          if grep -qiE "ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication" "${LOG}"; then
+            echo "::warning title=npm 凭据未就绪 → 跳过 npm 发布::$(grep -m1 -iE 'ENEEDAUTH|EOTP|403|401|bypass 2fa|authentication' "${LOG}" | cut -c1-220)"
+            echo "result=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::error title=npm 发布失败::非凭据类错误，详见上方 npm 输出。"
+          exit 1
 
   release:
     name: 打 tag 并创建 Release
@@ -638,7 +657,7 @@ jobs:
                   echo "**npm**：该版本已存在，跳过 ⏭️"
                   ;;
                 *)
-                  echo "**npm**：未发布 ⏭️ —— 未配置 \`NPM_TOKEN\` secret"
+                  echo "**npm**：未发布 ⏭️ —— 凭据未就绪或未配置（详见该 job 的 warning 注解；配置好后重跑即可补齐，发布步骤是幂等的）"
                   ;;
               esac
             else

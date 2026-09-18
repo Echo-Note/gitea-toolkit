@@ -31,8 +31,29 @@
 
 ### 工程
 
+- **npm 发布支持两种认证，且凭据类失败不再阻断发版。**
+
+  首次真实发布时踩到 **403**。原因不是权限范围（令牌对 `echo-note` 组织有读写权），
+  而是账号开启 2FA 后 **granular token 必须显式启用「绕过 2FA」**，否则 npm 拒绝发布：
+
+  > Two-factor authentication or granular access token with bypass 2fa enabled
+  > is required to publish packages.
+
+  更麻烦的是它把整条流水线卡住了 —— **两个扩展市场其实已经发布成功**，
+  却因为 `release` job 需要 `publish-npm` 成功而一直建不出 GitHub Release。
+
+  现在两处改进：
+
+  - 认证支持「`NPM_TOKEN`」与「**OIDC 可信发布**（无需任何令牌）」二选一。
+    后者需在 npm 包设置里配置 Trusted Publisher 指向本仓库的 `ci.yml`；
+    本 job 已声明 `id-token: write`，满足其要求。注意它要求包**已存在**，
+    所以首次发布只能用令牌或本地手动发一次。
+  - **凭据类错误（401/403/ENEEDAUTH/EOTP/2FA）降级为「醒目提示 + 跳过」**，
+    不再阻断 Release —— 凭据是配置问题，不该让已经发出去的市场版本连 Release 都建不出来。
+    配置好后重跑即可补齐，发布步骤本身是幂等的。
+
 - CI 的发布 job 由 `publish-ghpkg` 更名为 `publish-npm`，权限从 `packages: write`
-  改为 `id-token: write`（`--provenance` 需要）。
+  改为 `id-token: write`（`--provenance` 与 OIDC 都需要）。
 - README 的「接入 AI 助手」一节按公共 registry 重写（原先那段 GitHub Packages 的
   一次性认证说明已不再需要）。
 
